@@ -210,6 +210,17 @@ export default function TradingSettings() {
           <div className="space-y-4">
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-300">Buy Amount (SOL)</label>
+              <div className="flex gap-2 mb-2">
+                {[0.01, 0.1, 1, 10].map((value) => (
+                  <button
+                    key={value}
+                    onClick={() => handleBuyAmountChange(value)}
+                    className="px-3 py-1 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg border border-gray-700 transition-colors"
+                  >
+                    {value} SOL
+                  </button>
+                ))}
+              </div>
               <input
                 type="number"
                 value={buyAmount}
