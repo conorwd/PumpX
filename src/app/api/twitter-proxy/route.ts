@@ -10,9 +10,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
-    const apiKey = process.env.SOCIALDATA_API_KEY;
+    const apiKey = process.env.NEXT_PUBLIC_SOCIALDATA_API_KEY; 
     if (!apiKey) {
-      console.error('SOCIALDATA_API_KEY is not set');
+      console.error('NEXT_PUBLIC_SOCIALDATA_API_KEY is not set');
       return NextResponse.json({ error: 'API key configuration error' }, { status: 500 });
     }
 
@@ -20,13 +20,15 @@ export async function GET(request: Request) {
     const encodedQuery = encodeURIComponent(query);
     const url = `${baseUrl}?query=${encodedQuery}&type=${type}`;
     
-    console.log('Fetching from:', url); // Debug log
+    console.log('Fetching from:', url); 
+    console.log('Using API key:', apiKey); 
     
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Authorization': apiKey,
+        'Authorization': `Bearer ${apiKey}`,
         'Accept': 'application/json',
+        'Content-Type': 'application/json',
       },
     });
 
@@ -38,14 +40,14 @@ export async function GET(request: Request) {
       const errorText = await response.text();
       console.error('Error response:', errorText);
       return NextResponse.json(
-        { error: `Twitter API error: ${response.status}` },
+        { error: `Twitter API error: ${response.status}`, details: errorText },
         { status: response.status }
       );
     }
 
     const data = await response.json();
     return NextResponse.json(data);
-  } catch (error: any) { // Type assertion for error
+  } catch (error: any) { 
     console.error('Twitter proxy error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return NextResponse.json(
