@@ -63,6 +63,7 @@ export default function TwitterFeed() {
   const [buyError, setBuyError] = useState<{ [key: string]: string | null }>({});
   const [txSignatures, setTxSignatures] = useState<{ [key: string]: string }>({});
   const [pumpFunClient, setPumpFunClient] = useState<PumpFunClient | null>(null);
+  const [lastFetchTime, setLastFetchTime] = useState(Date.now());
   
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const priceIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -271,16 +272,26 @@ export default function TwitterFeed() {
       setLoading(true);
       setError(null);
       const query = encodeURIComponent('pump.fun/ -filter:retweets');
-      const since_time = Math.floor(Date.now() / 1000);
+      const since_time = Math.floor(lastFetchTime / 1000);
       const type = 'Latest';
       
       const response = await fetch(`/api/twitter-proxy?query=${query}+since_time:${since_time}&type=${type}`);
       
       if (!response.ok) {
-        throw new Error(`Failed to fetch tweets: ${response.status}`);
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Twitter API Error:', {
+          status: response.status,
+          data: errorData
+        });
+        throw new Error(errorData.error || `Failed to fetch tweets: ${response.status}`);
       }
 
       const data = await response.json();
+      
+      if (!Array.isArray(data)) {
+        console.error('Unexpected API response:', data);
+        throw new Error('Invalid API response format');
+      }
       
       // Process only new tweets
       const existingTweetIds = new Set(tweets.map(t => t.id_str));
@@ -319,6 +330,7 @@ export default function TwitterFeed() {
           .slice(0, 10);
         return allTweets;
       });
+      setLastFetchTime(Date.now());
     } catch (error) {
       console.error('Error fetching tweets:', error);
       setError('Failed to fetch tweets. Please try again later.');
