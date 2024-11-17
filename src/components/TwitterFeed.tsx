@@ -63,7 +63,7 @@ export default function TwitterFeed() {
   const [buyError, setBuyError] = useState<{ [key: string]: string | null }>({});
   const [txSignatures, setTxSignatures] = useState<{ [key: string]: string }>({});
   const [pumpFunClient, setPumpFunClient] = useState<PumpFunClient | null>(null);
-  const [lastFetchTime, setLastFetchTime] = useState(Date.now());
+  const [lastTweetId, setLastTweetId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(Date.now());
   
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -287,10 +287,11 @@ export default function TwitterFeed() {
       setLoading(true);
       setError(null);
       const query = encodeURIComponent('pump.fun/ -filter:retweets');
-      const since_time = Math.floor(lastFetchTime / 1000);
       const type = 'Latest';
       
-      const response = await fetch(`/api/twitter-proxy?query=${query}+since_time:${since_time}&type=${type}`);
+      // Use since_id to only get tweets newer than our last seen tweet
+      const sinceIdParam = lastTweetId ? `+since_id:${lastTweetId}` : '';
+      const response = await fetch(`/api/twitter-proxy?query=${query}${sinceIdParam}&type=${type}`);
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
@@ -308,13 +309,20 @@ export default function TwitterFeed() {
         throw new Error('Invalid API response format');
       }
       
-      // Process only new tweets
-      const existingTweetIds = new Set(tweets.map(t => t.id_str));
-      const brandNewTweets = data.tweets.filter((tweet: Tweet) => !existingTweetIds.has(tweet.id_str));
+      if (data.tweets.length === 0) {
+        setLoading(false);
+        return;
+      }
+
+      // Update last tweet ID to the newest tweet's ID
+      const newestTweet = data.tweets[0];
+      if (newestTweet && (!lastTweetId || newestTweet.id_str > lastTweetId)) {
+        setLastTweetId(newestTweet.id_str);
+      }
       
-      // Fetch token info only for new tweets
+      // Fetch token info for new tweets
       const enrichedNewTweets = await Promise.all(
-        brandNewTweets.map(async (tweet: Tweet) => {
+        data.tweets.map(async (tweet: Tweet) => {
           const mintAddress = extractMintAddress(tweet);
           if (!mintAddress) return tweet;
           
@@ -338,23 +346,14 @@ export default function TwitterFeed() {
         })
       );
 
-      // Combine with existing tweets, keeping existing data for old tweets
+      // Add new tweets to the existing list
       setTweets(prevTweets => {
-        // Create a map of existing tweets for quick lookup
-        const existingTweetsMap = new Map(prevTweets.map(t => [t.id_str, t]));
-        
-        // Combine new and existing tweets, preferring new tweet data
         const allTweets = [...enrichedNewTweets, ...prevTweets]
-          .filter((tweet, index, self) => 
-            // Keep only the first occurrence of each tweet
-            index === self.findIndex(t => t.id_str === tweet.id_str)
-          )
           .sort((a, b) => new Date(b.tweet_created_at).getTime() - new Date(a.tweet_created_at).getTime())
           .slice(0, 100);
-          
         return allTweets;
       });
-      setLastFetchTime(Date.now());
+      
     } catch (error) {
       console.error('Error fetching tweets:', error);
       setError('Failed to fetch tweets. Please try again later.');
