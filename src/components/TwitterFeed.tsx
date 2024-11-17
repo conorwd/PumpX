@@ -202,13 +202,16 @@ export default function TwitterFeed() {
 
   const formatTimeSinceCreation = (timestamp: number): string => {
     const now = Date.now();
-    const diffInMinutes = Math.floor((now - timestamp) / (1000 * 60));
+    const diffInSeconds = Math.floor((now - timestamp) / 1000);
     
-    if (diffInMinutes < 60) {
-      return `${diffInMinutes}m ago`;
+    if (diffInSeconds < 60) {
+      return `${diffInSeconds}s`;
+    } else if (diffInSeconds < 3600) {
+      const minutes = Math.floor(diffInSeconds / 60);
+      return `${minutes}m`;
     } else {
-      const hours = Math.floor(diffInMinutes / 60);
-      return `${hours}h ago`;
+      const hours = Math.floor(diffInSeconds / 3600);
+      return `${hours}h`;
     }
   };
 
@@ -328,7 +331,7 @@ export default function TwitterFeed() {
       setTweets(prevTweets => {
         const allTweets = [...enrichedNewTweets, ...prevTweets]
           .sort((a, b) => new Date(b.tweet_created_at).getTime() - new Date(a.tweet_created_at).getTime())
-          .slice(0, 10);
+          .slice(0, 100); // Keep last 100 tweets instead of 10
         return allTweets;
       });
       setLastFetchTime(Date.now());
