@@ -239,8 +239,8 @@ export default function TwitterFeed() {
 
   const fetchTokenInfo = async (mintAddress: string): Promise<TokenInfo | undefined> => {
     try {
-      const url = `https://frontend-api.pump.fun/coins/${mintAddress}`;
-      const response = await axios.get(url, {
+      const url = `/api/pump-proxy?mintAddress=${mintAddress}`;
+      const response = await fetch(url, {
         headers: {
           "Accept": "*/*",
           "Accept-Language": "en-US,en;q=0.5"
@@ -248,7 +248,7 @@ export default function TwitterFeed() {
       });
 
       if (response.status === 200) {
-        const data = response.data;
+        const data = await response.json();
         return {
           symbol: data.symbol || '???',
           name: data.name || 'Unknown Token',
@@ -258,6 +258,7 @@ export default function TwitterFeed() {
           createdTimestamp: data.created_timestamp
         };
       }
+      console.error('Error fetching token info:', response.status);
       return undefined;
     } catch (error) {
       console.error('Error fetching token info:', error);
