@@ -1,0 +1,1536 @@
+├── .gitattributes
+├── .gitignore
+├── LICENSE
+├── example.ts
+├── image.png
+├── package-lock.json
+├── package.json
+├── readme.md
+├── src
+    ├── api.ts
+    ├── constants.ts
+    ├── swap.ts
+    ├── types.ts
+    └── utils.ts
+└── tsconfig.json
+
+
+/.gitattributes:
+----------------------------------------------------------------------------------------------------
+1 | # Auto detect text files and perform LF normalization
+2 | * text=auto
+3 | 
+
+
+----------------------------------------------------------------------------------------------------
+/.gitignore:
+----------------------------------------------------------------------------------------------------
+1 | 
+2 | /node_modules
+3 | 
+
+
+----------------------------------------------------------------------------------------------------
+/LICENSE:
+----------------------------------------------------------------------------------------------------
+ 1 | MIT License
+ 2 | 
+ 3 | Copyright (c) 2024 Bilix
+ 4 | 
+ 5 | Permission is hereby granted, free of charge, to any person obtaining a copy
+ 6 | of this software and associated documentation files (the "Software"), to deal
+ 7 | in the Software without restriction, including without limitation the rights
+ 8 | to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ 9 | copies of the Software, and to permit persons to whom the Software is
+10 | furnished to do so, subject to the following conditions:
+11 | 
+12 | The above copyright notice and this permission notice shall be included in all
+13 | copies or substantial portions of the Software.
+14 | 
+15 | THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+16 | IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+17 | FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+18 | AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+19 | LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+20 | OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+21 | SOFTWARE.
+22 | 
+
+
+----------------------------------------------------------------------------------------------------
+/example.ts:
+----------------------------------------------------------------------------------------------------
+ 1 | import { pumpFunBuy, pumpFunSell} from './src/swap';
+ 2 | import { TransactionMode } from './src/types'
+ 3 | 
+ 4 | class Example {
+ 5 |     private payerPrivateKey: string;
+ 6 |     private mintAddress: string;
+ 7 |     private transactionMode: TransactionMode;
+ 8 | 
+ 9 |     constructor(privateKey: string, mintAddress: string, mode: TransactionMode) {
+10 |         this.payerPrivateKey = privateKey;
+11 |         this.mintAddress = mintAddress;
+12 |         this.transactionMode = mode;
+13 |     }
+14 | 
+15 |     async main() {
+16 |         const solIn = 0.0001; // Example value, adjust as needed
+17 |         const slippageDecimal = 0.25; // Example value, adjust as needed
+18 |         const tokenBalance = 1000; // Example value, adjust as needed
+19 |         const priorityFeeInSol = 0.0001; // Example value for tip to get faster inclusion, adjust as needed
+20 | 
+21 |         try {
+22 |             // Call the buy function
+23 |             await pumpFunBuy(this.transactionMode, this.payerPrivateKey, this.mintAddress, solIn, priorityFeeInSol, slippageDecimal);
+24 | 
+25 |             // Call the sell function
+26 |             //await pumpFunSell(this.transactionMode, this.payerPrivateKey, this.mintAddress, tokenBalance,priorityFeeInSol, slippageDecimal);
+27 |         } catch (error) {
+28 |             console.error('Error in main function:', error);
+29 |         }
+30 |     }
+31 | }
+32 | 
+33 | /** Usage
+34 |  *  --Generating a private key
+35 |  *  Using solana.web3 Keypair
+36 |  *  const newKeypair = Keypair.generate();
+37 |     const newKeypairArray = Array.from(newKeypair.secretKey);
+38 |     const newPrivateKey = bs58.encode(newKeypair.secretKey);
+39 | 
+40 |     The bs58 encoded secret key is what you want to put in below as private key. You will see that this is an 88 character string and
+41 |     matches with the export from a phantom wallet.
+42 |  */
+43 | const privateKey = 'your_private_key'; // Replace with your actual private key
+44 | const mintAddress = 'your_token_mint_address'; //Replace with actual token mint address
+45 | const txMode = TransactionMode.Simulation; //Set to simulate to test, Execution to perform
+46 | 
+47 | const example = new Example(privateKey,mintAddress, txMode);
+48 | example.main();
+49 | 
+
+
+----------------------------------------------------------------------------------------------------
+/image.png:
+----------------------------------------------------------------------------------------------------
+https://raw.githubusercontent.com/bilix-software/solana-pump-fun/main/image.png
+
+
+----------------------------------------------------------------------------------------------------
+/package-lock.json:
+----------------------------------------------------------------------------------------------------
+  1 | {
+  2 |   "name": "solana-pump-fun",
+  3 |   "version": "1.0.0",
+  4 |   "lockfileVersion": 3,
+  5 |   "requires": true,
+  6 |   "packages": {
+  7 |     "": {
+  8 |       "name": "solana-pump-fun",
+  9 |       "version": "1.0.0",
+ 10 |       "license": "ISC",
+ 11 |       "dependencies": {
+ 12 |         "@solana/spl-token": "^0.4.6",
+ 13 |         "@solana/web3.js": "^1.91.8",
+ 14 |         "axios": "^1.6.8",
+ 15 |         "bs58": "^5.0.0"
+ 16 |       },
+ 17 |       "devDependencies": {
+ 18 |         "typescript": "^5.4.5"
+ 19 |       }
+ 20 |     },
+ 21 |     "node_modules/@babel/runtime": {
+ 22 |       "version": "7.24.5",
+ 23 |       "resolved": "https://registry.npmjs.org/@babel/runtime/-/runtime-7.24.5.tgz",
+ 24 |       "integrity": "sha512-Nms86NXrsaeU9vbBJKni6gXiEXZ4CVpYVzEjDH9Sb8vmZ3UljyA1GSOJl/6LGPO8EHLuSF9H+IxNXHPX8QHJ4g==",
+ 25 |       "dependencies": {
+ 26 |         "regenerator-runtime": "^0.14.0"
+ 27 |       },
+ 28 |       "engines": {
+ 29 |         "node": ">=6.9.0"
+ 30 |       }
+ 31 |     },
+ 32 |     "node_modules/@noble/curves": {
+ 33 |       "version": "1.4.0",
+ 34 |       "resolved": "https://registry.npmjs.org/@noble/curves/-/curves-1.4.0.tgz",
+ 35 |       "integrity": "sha512-p+4cb332SFCrReJkCYe8Xzm0OWi4Jji5jVdIZRL/PmacmDkFNw6MrrV+gGpiPxLHbV+zKFRywUWbaseT+tZRXg==",
+ 36 |       "dependencies": {
+ 37 |         "@noble/hashes": "1.4.0"
+ 38 |       },
+ 39 |       "funding": {
+ 40 |         "url": "https://paulmillr.com/funding/"
+ 41 |       }
+ 42 |     },
+ 43 |     "node_modules/@noble/hashes": {
+ 44 |       "version": "1.4.0",
+ 45 |       "resolved": "https://registry.npmjs.org/@noble/hashes/-/hashes-1.4.0.tgz",
+ 46 |       "integrity": "sha512-V1JJ1WTRUqHHrOSh597hURcMqVKVGL/ea3kv0gSnEdsEZ0/+VyPghM1lMNGc00z7CIQorSvbKpuJkxvuHbvdbg==",
+ 47 |       "engines": {
+ 48 |         "node": ">= 16"
+ 49 |       },
+ 50 |       "funding": {
+ 51 |         "url": "https://paulmillr.com/funding/"
+ 52 |       }
+ 53 |     },
+ 54 |     "node_modules/@solana/buffer-layout": {
+ 55 |       "version": "4.0.1",
+ 56 |       "resolved": "https://registry.npmjs.org/@solana/buffer-layout/-/buffer-layout-4.0.1.tgz",
+ 57 |       "integrity": "sha512-E1ImOIAD1tBZFRdjeM4/pzTiTApC0AOBGwyAMS4fwIodCWArzJ3DWdoh8cKxeFM2fElkxBh2Aqts1BPC373rHA==",
+ 58 |       "dependencies": {
+ 59 |         "buffer": "~6.0.3"
+ 60 |       },
+ 61 |       "engines": {
+ 62 |         "node": ">=5.10"
+ 63 |       }
+ 64 |     },
+ 65 |     "node_modules/@solana/buffer-layout-utils": {
+ 66 |       "version": "0.2.0",
+ 67 |       "resolved": "https://registry.npmjs.org/@solana/buffer-layout-utils/-/buffer-layout-utils-0.2.0.tgz",
+ 68 |       "integrity": "sha512-szG4sxgJGktbuZYDg2FfNmkMi0DYQoVjN2h7ta1W1hPrwzarcFLBq9UpX1UjNXsNpT9dn+chgprtWGioUAr4/g==",
+ 69 |       "dependencies": {
+ 70 |         "@solana/buffer-layout": "^4.0.0",
+ 71 |         "@solana/web3.js": "^1.32.0",
+ 72 |         "bigint-buffer": "^1.1.5",
+ 73 |         "bignumber.js": "^9.0.1"
+ 74 |       },
+ 75 |       "engines": {
+ 76 |         "node": ">= 10"
+ 77 |       }
+ 78 |     },
+ 79 |     "node_modules/@solana/codecs": {
+ 80 |       "version": "2.0.0-preview.2",
+ 81 |       "resolved": "https://registry.npmjs.org/@solana/codecs/-/codecs-2.0.0-preview.2.tgz",
+ 82 |       "integrity": "sha512-4HHzCD5+pOSmSB71X6w9ptweV48Zj1Vqhe732+pcAQ2cMNnN0gMPMdDq7j3YwaZDZ7yrILVV/3+HTnfT77t2yA==",
+ 83 |       "dependencies": {
+ 84 |         "@solana/codecs-core": "2.0.0-preview.2",
+ 85 |         "@solana/codecs-data-structures": "2.0.0-preview.2",
+ 86 |         "@solana/codecs-numbers": "2.0.0-preview.2",
+ 87 |         "@solana/codecs-strings": "2.0.0-preview.2",
+ 88 |         "@solana/options": "2.0.0-preview.2"
+ 89 |       }
+ 90 |     },
+ 91 |     "node_modules/@solana/codecs-core": {
+ 92 |       "version": "2.0.0-preview.2",
+ 93 |       "resolved": "https://registry.npmjs.org/@solana/codecs-core/-/codecs-core-2.0.0-preview.2.tgz",
+ 94 |       "integrity": "sha512-gLhCJXieSCrAU7acUJjbXl+IbGnqovvxQLlimztPoGgfLQ1wFYu+XJswrEVQqknZYK1pgxpxH3rZ+OKFs0ndQg==",
+ 95 |       "dependencies": {
+ 96 |         "@solana/errors": "2.0.0-preview.2"
+ 97 |       }
+ 98 |     },
+ 99 |     "node_modules/@solana/codecs-data-structures": {
+100 |       "version": "2.0.0-preview.2",
+101 |       "resolved": "https://registry.npmjs.org/@solana/codecs-data-structures/-/codecs-data-structures-2.0.0-preview.2.tgz",
+102 |       "integrity": "sha512-Xf5vIfromOZo94Q8HbR04TbgTwzigqrKII0GjYr21K7rb3nba4hUW2ir8kguY7HWFBcjHGlU5x3MevKBOLp3Zg==",
+103 |       "dependencies": {
+104 |         "@solana/codecs-core": "2.0.0-preview.2",
+105 |         "@solana/codecs-numbers": "2.0.0-preview.2",
+106 |         "@solana/errors": "2.0.0-preview.2"
+107 |       }
+108 |     },
+109 |     "node_modules/@solana/codecs-numbers": {
+110 |       "version": "2.0.0-preview.2",
+111 |       "resolved": "https://registry.npmjs.org/@solana/codecs-numbers/-/codecs-numbers-2.0.0-preview.2.tgz",
+112 |       "integrity": "sha512-aLZnDTf43z4qOnpTcDsUVy1Ci9im1Md8thWipSWbE+WM9ojZAx528oAql+Cv8M8N+6ALKwgVRhPZkto6E59ARw==",
+113 |       "dependencies": {
+114 |         "@solana/codecs-core": "2.0.0-preview.2",
+115 |         "@solana/errors": "2.0.0-preview.2"
+116 |       }
+117 |     },
+118 |     "node_modules/@solana/codecs-strings": {
+119 |       "version": "2.0.0-preview.2",
+120 |       "resolved": "https://registry.npmjs.org/@solana/codecs-strings/-/codecs-strings-2.0.0-preview.2.tgz",
+121 |       "integrity": "sha512-EgBwY+lIaHHgMJIqVOGHfIfpdmmUDNoNO/GAUGeFPf+q0dF+DtwhJPEMShhzh64X2MeCZcmSO6Kinx0Bvmmz2g==",
+122 |       "dependencies": {
+123 |         "@solana/codecs-core": "2.0.0-preview.2",
+124 |         "@solana/codecs-numbers": "2.0.0-preview.2",
+125 |         "@solana/errors": "2.0.0-preview.2"
+126 |       },
+127 |       "peerDependencies": {
+128 |         "fastestsmallesttextencoderdecoder": "^1.0.22"
+129 |       }
+130 |     },
+131 |     "node_modules/@solana/errors": {
+132 |       "version": "2.0.0-preview.2",
+133 |       "resolved": "https://registry.npmjs.org/@solana/errors/-/errors-2.0.0-preview.2.tgz",
+134 |       "integrity": "sha512-H2DZ1l3iYF5Rp5pPbJpmmtCauWeQXRJapkDg8epQ8BJ7cA2Ut/QEtC3CMmw/iMTcuS6uemFNLcWvlOfoQhvQuA==",
+135 |       "dependencies": {
+136 |         "chalk": "^5.3.0",
+137 |         "commander": "^12.0.0"
+138 |       },
+139 |       "bin": {
+140 |         "errors": "bin/cli.js"
+141 |       }
+142 |     },
+143 |     "node_modules/@solana/options": {
+144 |       "version": "2.0.0-preview.2",
+145 |       "resolved": "https://registry.npmjs.org/@solana/options/-/options-2.0.0-preview.2.tgz",
+146 |       "integrity": "sha512-FAHqEeH0cVsUOTzjl5OfUBw2cyT8d5Oekx4xcn5hn+NyPAfQJgM3CEThzgRD6Q/4mM5pVUnND3oK/Mt1RzSE/w==",
+147 |       "dependencies": {
+148 |         "@solana/codecs-core": "2.0.0-preview.2",
+149 |         "@solana/codecs-numbers": "2.0.0-preview.2"
+150 |       }
+151 |     },
+152 |     "node_modules/@solana/spl-token": {
+153 |       "version": "0.4.6",
+154 |       "resolved": "https://registry.npmjs.org/@solana/spl-token/-/spl-token-0.4.6.tgz",
+155 |       "integrity": "sha512-1nCnUqfHVtdguFciVWaY/RKcQz1IF4b31jnKgAmjU9QVN1q7dRUkTEWJZgTYIEtsULjVnC9jRqlhgGN39WbKKA==",
+156 |       "dependencies": {
+157 |         "@solana/buffer-layout": "^4.0.0",
+158 |         "@solana/buffer-layout-utils": "^0.2.0",
+159 |         "@solana/spl-token-group": "^0.0.4",
+160 |         "@solana/spl-token-metadata": "^0.1.4",
+161 |         "buffer": "^6.0.3"
+162 |       },
+163 |       "engines": {
+164 |         "node": ">=16"
+165 |       },
+166 |       "peerDependencies": {
+167 |         "@solana/web3.js": "^1.91.6"
+168 |       }
+169 |     },
+170 |     "node_modules/@solana/spl-token-group": {
+171 |       "version": "0.0.4",
+172 |       "resolved": "https://registry.npmjs.org/@solana/spl-token-group/-/spl-token-group-0.0.4.tgz",
+173 |       "integrity": "sha512-7+80nrEMdUKlK37V6kOe024+T7J4nNss0F8LQ9OOPYdWCCfJmsGUzVx2W3oeizZR4IHM6N4yC9v1Xqwc3BTPWw==",
+174 |       "dependencies": {
+175 |         "@solana/codecs": "2.0.0-preview.2",
+176 |         "@solana/spl-type-length-value": "0.1.0"
+177 |       },
+178 |       "engines": {
+179 |         "node": ">=16"
+180 |       },
+181 |       "peerDependencies": {
+182 |         "@solana/web3.js": "^1.91.6"
+183 |       }
+184 |     },
+185 |     "node_modules/@solana/spl-token-metadata": {
+186 |       "version": "0.1.4",
+187 |       "resolved": "https://registry.npmjs.org/@solana/spl-token-metadata/-/spl-token-metadata-0.1.4.tgz",
+188 |       "integrity": "sha512-N3gZ8DlW6NWDV28+vCCDJoTqaCZiF/jDUnk3o8GRkAFzHObiR60Bs1gXHBa8zCPdvOwiG6Z3dg5pg7+RW6XNsQ==",
+189 |       "dependencies": {
+190 |         "@solana/codecs": "2.0.0-preview.2",
+191 |         "@solana/spl-type-length-value": "0.1.0"
+192 |       },
+193 |       "engines": {
+194 |         "node": ">=16"
+195 |       },
+196 |       "peerDependencies": {
+197 |         "@solana/web3.js": "^1.91.6"
+198 |       }
+199 |     },
+200 |     "node_modules/@solana/spl-type-length-value": {
+201 |       "version": "0.1.0",
+202 |       "resolved": "https://registry.npmjs.org/@solana/spl-type-length-value/-/spl-type-length-value-0.1.0.tgz",
+203 |       "integrity": "sha512-JBMGB0oR4lPttOZ5XiUGyvylwLQjt1CPJa6qQ5oM+MBCndfjz2TKKkw0eATlLLcYmq1jBVsNlJ2cD6ns2GR7lA==",
+204 |       "dependencies": {
+205 |         "buffer": "^6.0.3"
+206 |       },
+207 |       "engines": {
+208 |         "node": ">=16"
+209 |       }
+210 |     },
+211 |     "node_modules/@solana/web3.js": {
+212 |       "version": "1.91.8",
+213 |       "resolved": "https://registry.npmjs.org/@solana/web3.js/-/web3.js-1.91.8.tgz",
+214 |       "integrity": "sha512-USa6OS1jbh8zOapRJ/CBZImZ8Xb7AJjROZl5adql9TpOoBN9BUzyyouS5oPuZHft7S7eB8uJPuXWYjMi6BHgOw==",
+215 |       "dependencies": {
+216 |         "@babel/runtime": "^7.24.5",
+217 |         "@noble/curves": "^1.4.0",
+218 |         "@noble/hashes": "^1.4.0",
+219 |         "@solana/buffer-layout": "^4.0.1",
+220 |         "agentkeepalive": "^4.5.0",
+221 |         "bigint-buffer": "^1.1.5",
+222 |         "bn.js": "^5.2.1",
+223 |         "borsh": "^0.7.0",
+224 |         "bs58": "^4.0.1",
+225 |         "buffer": "6.0.3",
+226 |         "fast-stable-stringify": "^1.0.0",
+227 |         "jayson": "^4.1.0",
+228 |         "node-fetch": "^2.7.0",
+229 |         "rpc-websockets": "^7.11.0",
+230 |         "superstruct": "^0.14.2"
+231 |       }
+232 |     },
+233 |     "node_modules/@solana/web3.js/node_modules/base-x": {
+234 |       "version": "3.0.9",
+235 |       "resolved": "https://registry.npmjs.org/base-x/-/base-x-3.0.9.tgz",
+236 |       "integrity": "sha512-H7JU6iBHTal1gp56aKoaa//YUxEaAOUiydvrV/pILqIHXTtqxSkATOnDA2u+jZ/61sD+L/412+7kzXRtWukhpQ==",
+237 |       "dependencies": {
+238 |         "safe-buffer": "^5.0.1"
+239 |       }
+240 |     },
+241 |     "node_modules/@solana/web3.js/node_modules/bs58": {
+242 |       "version": "4.0.1",
+243 |       "resolved": "https://registry.npmjs.org/bs58/-/bs58-4.0.1.tgz",
+244 |       "integrity": "sha512-Ok3Wdf5vOIlBrgCvTq96gBkJw+JUEzdBgyaza5HLtPm7yTHkjRy8+JzNyHF7BHa0bNWOQIp3m5YF0nnFcOIKLw==",
+245 |       "dependencies": {
+246 |         "base-x": "^3.0.2"
+247 |       }
+248 |     },
+249 |     "node_modules/@types/connect": {
+250 |       "version": "3.4.38",
+251 |       "resolved": "https://registry.npmjs.org/@types/connect/-/connect-3.4.38.tgz",
+252 |       "integrity": "sha512-K6uROf1LD88uDQqJCktA4yzL1YYAK6NgfsI0v/mTgyPKWsX1CnJ0XPSDhViejru1GcRkLWb8RlzFYJRqGUbaug==",
+253 |       "dependencies": {
+254 |         "@types/node": "*"
+255 |       }
+256 |     },
+257 |     "node_modules/@types/node": {
+258 |       "version": "12.20.55",
+259 |       "resolved": "https://registry.npmjs.org/@types/node/-/node-12.20.55.tgz",
+260 |       "integrity": "sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ=="
+261 |     },
+262 |     "node_modules/@types/ws": {
+263 |       "version": "7.4.7",
+264 |       "resolved": "https://registry.npmjs.org/@types/ws/-/ws-7.4.7.tgz",
+265 |       "integrity": "sha512-JQbbmxZTZehdc2iszGKs5oC3NFnjeay7mtAWrdt7qNtAVK0g19muApzAy4bm9byz79xa2ZnO/BOBC2R8RC5Lww==",
+266 |       "dependencies": {
+267 |         "@types/node": "*"
+268 |       }
+269 |     },
+270 |     "node_modules/agentkeepalive": {
+271 |       "version": "4.5.0",
+272 |       "resolved": "https://registry.npmjs.org/agentkeepalive/-/agentkeepalive-4.5.0.tgz",
+273 |       "integrity": "sha512-5GG/5IbQQpC9FpkRGsSvZI5QYeSCzlJHdpBQntCsuTOxhKD8lqKhrleg2Yi7yvMIf82Ycmmqln9U8V9qwEiJew==",
+274 |       "dependencies": {
+275 |         "humanize-ms": "^1.2.1"
+276 |       },
+277 |       "engines": {
+278 |         "node": ">= 8.0.0"
+279 |       }
+280 |     },
+281 |     "node_modules/asynckit": {
+282 |       "version": "0.4.0",
+283 |       "resolved": "https://registry.npmjs.org/asynckit/-/asynckit-0.4.0.tgz",
+284 |       "integrity": "sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q=="
+285 |     },
+286 |     "node_modules/axios": {
+287 |       "version": "1.6.8",
+288 |       "resolved": "https://registry.npmjs.org/axios/-/axios-1.6.8.tgz",
+289 |       "integrity": "sha512-v/ZHtJDU39mDpyBoFVkETcd/uNdxrWRrg3bKpOKzXFA6Bvqopts6ALSMU3y6ijYxbw2B+wPrIv46egTzJXCLGQ==",
+290 |       "dependencies": {
+291 |         "follow-redirects": "^1.15.6",
+292 |         "form-data": "^4.0.0",
+293 |         "proxy-from-env": "^1.1.0"
+294 |       }
+295 |     },
+296 |     "node_modules/base-x": {
+297 |       "version": "4.0.0",
+298 |       "resolved": "https://registry.npmjs.org/base-x/-/base-x-4.0.0.tgz",
+299 |       "integrity": "sha512-FuwxlW4H5kh37X/oW59pwTzzTKRzfrrQwhmyspRM7swOEZcHtDZSCt45U6oKgtuFE+WYPblePMVIPR4RZrh/hw=="
+300 |     },
+301 |     "node_modules/base64-js": {
+302 |       "version": "1.5.1",
+303 |       "resolved": "https://registry.npmjs.org/base64-js/-/base64-js-1.5.1.tgz",
+304 |       "integrity": "sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==",
+305 |       "funding": [
+306 |         {
+307 |           "type": "github",
+308 |           "url": "https://github.com/sponsors/feross"
+309 |         },
+310 |         {
+311 |           "type": "patreon",
+312 |           "url": "https://www.patreon.com/feross"
+313 |         },
+314 |         {
+315 |           "type": "consulting",
+316 |           "url": "https://feross.org/support"
+317 |         }
+318 |       ]
+319 |     },
+320 |     "node_modules/bigint-buffer": {
+321 |       "version": "1.1.5",
+322 |       "resolved": "https://registry.npmjs.org/bigint-buffer/-/bigint-buffer-1.1.5.tgz",
+323 |       "integrity": "sha512-trfYco6AoZ+rKhKnxA0hgX0HAbVP/s808/EuDSe2JDzUnCp/xAsli35Orvk67UrTEcwuxZqYZDmfA2RXJgxVvA==",
+324 |       "hasInstallScript": true,
+325 |       "dependencies": {
+326 |         "bindings": "^1.3.0"
+327 |       },
+328 |       "engines": {
+329 |         "node": ">= 10.0.0"
+330 |       }
+331 |     },
+332 |     "node_modules/bignumber.js": {
+333 |       "version": "9.1.2",
+334 |       "resolved": "https://registry.npmjs.org/bignumber.js/-/bignumber.js-9.1.2.tgz",
+335 |       "integrity": "sha512-2/mKyZH9K85bzOEfhXDBFZTGd1CTs+5IHpeFQo9luiBG7hghdC851Pj2WAhb6E3R6b9tZj/XKhbg4fum+Kepug==",
+336 |       "engines": {
+337 |         "node": "*"
+338 |       }
+339 |     },
+340 |     "node_modules/bindings": {
+341 |       "version": "1.5.0",
+342 |       "resolved": "https://registry.npmjs.org/bindings/-/bindings-1.5.0.tgz",
+343 |       "integrity": "sha512-p2q/t/mhvuOj/UeLlV6566GD/guowlr0hHxClI0W9m7MWYkL1F0hLo+0Aexs9HSPCtR1SXQ0TD3MMKrXZajbiQ==",
+344 |       "dependencies": {
+345 |         "file-uri-to-path": "1.0.0"
+346 |       }
+347 |     },
+348 |     "node_modules/bn.js": {
+349 |       "version": "5.2.1",
+350 |       "resolved": "https://registry.npmjs.org/bn.js/-/bn.js-5.2.1.tgz",
+351 |       "integrity": "sha512-eXRvHzWyYPBuB4NBy0cmYQjGitUrtqwbvlzP3G6VFnNRbsZQIxQ10PbKKHt8gZ/HW/D/747aDl+QkDqg3KQLMQ=="
+352 |     },
+353 |     "node_modules/borsh": {
+354 |       "version": "0.7.0",
+355 |       "resolved": "https://registry.npmjs.org/borsh/-/borsh-0.7.0.tgz",
+356 |       "integrity": "sha512-CLCsZGIBCFnPtkNnieW/a8wmreDmfUtjU2m9yHrzPXIlNbqVs0AQrSatSG6vdNYUqdc83tkQi2eHfF98ubzQLA==",
+357 |       "dependencies": {
+358 |         "bn.js": "^5.2.0",
+359 |         "bs58": "^4.0.0",
+360 |         "text-encoding-utf-8": "^1.0.2"
+361 |       }
+362 |     },
+363 |     "node_modules/borsh/node_modules/base-x": {
+364 |       "version": "3.0.9",
+365 |       "resolved": "https://registry.npmjs.org/base-x/-/base-x-3.0.9.tgz",
+366 |       "integrity": "sha512-H7JU6iBHTal1gp56aKoaa//YUxEaAOUiydvrV/pILqIHXTtqxSkATOnDA2u+jZ/61sD+L/412+7kzXRtWukhpQ==",
+367 |       "dependencies": {
+368 |         "safe-buffer": "^5.0.1"
+369 |       }
+370 |     },
+371 |     "node_modules/borsh/node_modules/bs58": {
+372 |       "version": "4.0.1",
+373 |       "resolved": "https://registry.npmjs.org/bs58/-/bs58-4.0.1.tgz",
+374 |       "integrity": "sha512-Ok3Wdf5vOIlBrgCvTq96gBkJw+JUEzdBgyaza5HLtPm7yTHkjRy8+JzNyHF7BHa0bNWOQIp3m5YF0nnFcOIKLw==",
+375 |       "dependencies": {
+376 |         "base-x": "^3.0.2"
+377 |       }
+378 |     },
+379 |     "node_modules/bs58": {
+380 |       "version": "5.0.0",
+381 |       "resolved": "https://registry.npmjs.org/bs58/-/bs58-5.0.0.tgz",
+382 |       "integrity": "sha512-r+ihvQJvahgYT50JD05dyJNKlmmSlMoOGwn1lCcEzanPglg7TxYjioQUYehQ9mAR/+hOSd2jRc/Z2y5UxBymvQ==",
+383 |       "dependencies": {
+384 |         "base-x": "^4.0.0"
+385 |       }
+386 |     },
+387 |     "node_modules/buffer": {
+388 |       "version": "6.0.3",
+389 |       "resolved": "https://registry.npmjs.org/buffer/-/buffer-6.0.3.tgz",
+390 |       "integrity": "sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==",
+391 |       "funding": [
+392 |         {
+393 |           "type": "github",
+394 |           "url": "https://github.com/sponsors/feross"
+395 |         },
+396 |         {
+397 |           "type": "patreon",
+398 |           "url": "https://www.patreon.com/feross"
+399 |         },
+400 |         {
+401 |           "type": "consulting",
+402 |           "url": "https://feross.org/support"
+403 |         }
+404 |       ],
+405 |       "dependencies": {
+406 |         "base64-js": "^1.3.1",
+407 |         "ieee754": "^1.2.1"
+408 |       }
+409 |     },
+410 |     "node_modules/bufferutil": {
+411 |       "version": "4.0.8",
+412 |       "resolved": "https://registry.npmjs.org/bufferutil/-/bufferutil-4.0.8.tgz",
+413 |       "integrity": "sha512-4T53u4PdgsXqKaIctwF8ifXlRTTmEPJ8iEPWFdGZvcf7sbwYo6FKFEX9eNNAnzFZ7EzJAQ3CJeOtCRA4rDp7Pw==",
+414 |       "hasInstallScript": true,
+415 |       "optional": true,
+416 |       "dependencies": {
+417 |         "node-gyp-build": "^4.3.0"
+418 |       },
+419 |       "engines": {
+420 |         "node": ">=6.14.2"
+421 |       }
+422 |     },
+423 |     "node_modules/chalk": {
+424 |       "version": "5.3.0",
+425 |       "resolved": "https://registry.npmjs.org/chalk/-/chalk-5.3.0.tgz",
+426 |       "integrity": "sha512-dLitG79d+GV1Nb/VYcCDFivJeK1hiukt9QjRNVOsUtTy1rR1YJsmpGGTZ3qJos+uw7WmWF4wUwBd9jxjocFC2w==",
+427 |       "engines": {
+428 |         "node": "^12.17.0 || ^14.13 || >=16.0.0"
+429 |       },
+430 |       "funding": {
+431 |         "url": "https://github.com/chalk/chalk?sponsor=1"
+432 |       }
+433 |     },
+434 |     "node_modules/combined-stream": {
+435 |       "version": "1.0.8",
+436 |       "resolved": "https://registry.npmjs.org/combined-stream/-/combined-stream-1.0.8.tgz",
+437 |       "integrity": "sha512-FQN4MRfuJeHf7cBbBMJFXhKSDq+2kAArBlmRBvcvFE5BB1HZKXtSFASDhdlz9zOYwxh8lDdnvmMOe/+5cdoEdg==",
+438 |       "dependencies": {
+439 |         "delayed-stream": "~1.0.0"
+440 |       },
+441 |       "engines": {
+442 |         "node": ">= 0.8"
+443 |       }
+444 |     },
+445 |     "node_modules/commander": {
+446 |       "version": "12.0.0",
+447 |       "resolved": "https://registry.npmjs.org/commander/-/commander-12.0.0.tgz",
+448 |       "integrity": "sha512-MwVNWlYjDTtOjX5PiD7o5pK0UrFU/OYgcJfjjK4RaHZETNtjJqrZa9Y9ds88+A+f+d5lv+561eZ+yCKoS3gbAA==",
+449 |       "engines": {
+450 |         "node": ">=18"
+451 |       }
+452 |     },
+453 |     "node_modules/delay": {
+454 |       "version": "5.0.0",
+455 |       "resolved": "https://registry.npmjs.org/delay/-/delay-5.0.0.tgz",
+456 |       "integrity": "sha512-ReEBKkIfe4ya47wlPYf/gu5ib6yUG0/Aez0JQZQz94kiWtRQvZIQbTiehsnwHvLSWJnQdhVeqYue7Id1dKr0qw==",
+457 |       "engines": {
+458 |         "node": ">=10"
+459 |       },
+460 |       "funding": {
+461 |         "url": "https://github.com/sponsors/sindresorhus"
+462 |       }
+463 |     },
+464 |     "node_modules/delayed-stream": {
+465 |       "version": "1.0.0",
+466 |       "resolved": "https://registry.npmjs.org/delayed-stream/-/delayed-stream-1.0.0.tgz",
+467 |       "integrity": "sha512-ZySD7Nf91aLB0RxL4KGrKHBXl7Eds1DAmEdcoVawXnLD7SDhpNgtuII2aAkg7a7QS41jxPSZ17p4VdGnMHk3MQ==",
+468 |       "engines": {
+469 |         "node": ">=0.4.0"
+470 |       }
+471 |     },
+472 |     "node_modules/es6-promise": {
+473 |       "version": "4.2.8",
+474 |       "resolved": "https://registry.npmjs.org/es6-promise/-/es6-promise-4.2.8.tgz",
+475 |       "integrity": "sha512-HJDGx5daxeIvxdBxvG2cb9g4tEvwIk3i8+nhX0yGrYmZUzbkdg8QbDevheDB8gd0//uPj4c1EQua8Q+MViT0/w=="
+476 |     },
+477 |     "node_modules/es6-promisify": {
+478 |       "version": "5.0.0",
+479 |       "resolved": "https://registry.npmjs.org/es6-promisify/-/es6-promisify-5.0.0.tgz",
+480 |       "integrity": "sha512-C+d6UdsYDk0lMebHNR4S2NybQMMngAOnOwYBQjTOiv0MkoJMP0Myw2mgpDLBcpfCmRLxyFqYhS/CfOENq4SJhQ==",
+481 |       "dependencies": {
+482 |         "es6-promise": "^4.0.3"
+483 |       }
+484 |     },
+485 |     "node_modules/eventemitter3": {
+486 |       "version": "4.0.7",
+487 |       "resolved": "https://registry.npmjs.org/eventemitter3/-/eventemitter3-4.0.7.tgz",
+488 |       "integrity": "sha512-8guHBZCwKnFhYdHr2ysuRWErTwhoN2X8XELRlrRwpmfeY2jjuUN4taQMsULKUVo1K4DvZl+0pgfyoysHxvmvEw=="
+489 |     },
+490 |     "node_modules/eyes": {
+491 |       "version": "0.1.8",
+492 |       "resolved": "https://registry.npmjs.org/eyes/-/eyes-0.1.8.tgz",
+493 |       "integrity": "sha512-GipyPsXO1anza0AOZdy69Im7hGFCNB7Y/NGjDlZGJ3GJJLtwNSb2vrzYrTYJRrRloVx7pl+bhUaTB8yiccPvFQ==",
+494 |       "engines": {
+495 |         "node": "> 0.1.90"
+496 |       }
+497 |     },
+498 |     "node_modules/fast-stable-stringify": {
+499 |       "version": "1.0.0",
+500 |       "resolved": "https://registry.npmjs.org/fast-stable-stringify/-/fast-stable-stringify-1.0.0.tgz",
+501 |       "integrity": "sha512-wpYMUmFu5f00Sm0cj2pfivpmawLZ0NKdviQ4w9zJeR8JVtOpOxHmLaJuj0vxvGqMJQWyP/COUkF75/57OKyRag=="
+502 |     },
+503 |     "node_modules/fastestsmallesttextencoderdecoder": {
+504 |       "version": "1.0.22",
+505 |       "resolved": "https://registry.npmjs.org/fastestsmallesttextencoderdecoder/-/fastestsmallesttextencoderdecoder-1.0.22.tgz",
+506 |       "integrity": "sha512-Pb8d48e+oIuY4MaM64Cd7OW1gt4nxCHs7/ddPPZ/Ic3sg8yVGM7O9wDvZ7us6ScaUupzM+pfBolwtYhN1IxBIw==",
+507 |       "peer": true
+508 |     },
+509 |     "node_modules/file-uri-to-path": {
+510 |       "version": "1.0.0",
+511 |       "resolved": "https://registry.npmjs.org/file-uri-to-path/-/file-uri-to-path-1.0.0.tgz",
+512 |       "integrity": "sha512-0Zt+s3L7Vf1biwWZ29aARiVYLx7iMGnEUl9x33fbB/j3jR81u/O2LbqK+Bm1CDSNDKVtJ/YjwY7TUd5SkeLQLw=="
+513 |     },
+514 |     "node_modules/follow-redirects": {
+515 |       "version": "1.15.6",
+516 |       "resolved": "https://registry.npmjs.org/follow-redirects/-/follow-redirects-1.15.6.tgz",
+517 |       "integrity": "sha512-wWN62YITEaOpSK584EZXJafH1AGpO8RVgElfkuXbTOrPX4fIfOyEpW/CsiNd8JdYrAoOvafRTOEnvsO++qCqFA==",
+518 |       "funding": [
+519 |         {
+520 |           "type": "individual",
+521 |           "url": "https://github.com/sponsors/RubenVerborgh"
+522 |         }
+523 |       ],
+524 |       "engines": {
+525 |         "node": ">=4.0"
+526 |       },
+527 |       "peerDependenciesMeta": {
+528 |         "debug": {
+529 |           "optional": true
+530 |         }
+531 |       }
+532 |     },
+533 |     "node_modules/form-data": {
+534 |       "version": "4.0.0",
+535 |       "resolved": "https://registry.npmjs.org/form-data/-/form-data-4.0.0.tgz",
+536 |       "integrity": "sha512-ETEklSGi5t0QMZuiXoA/Q6vcnxcLQP5vdugSpuAyi6SVGi2clPPp+xgEhuMaHC+zGgn31Kd235W35f7Hykkaww==",
+537 |       "dependencies": {
+538 |         "asynckit": "^0.4.0",
+539 |         "combined-stream": "^1.0.8",
+540 |         "mime-types": "^2.1.12"
+541 |       },
+542 |       "engines": {
+543 |         "node": ">= 6"
+544 |       }
+545 |     },
+546 |     "node_modules/humanize-ms": {
+547 |       "version": "1.2.1",
+548 |       "resolved": "https://registry.npmjs.org/humanize-ms/-/humanize-ms-1.2.1.tgz",
+549 |       "integrity": "sha512-Fl70vYtsAFb/C06PTS9dZBo7ihau+Tu/DNCk/OyHhea07S+aeMWpFFkUaXRa8fI+ScZbEI8dfSxwY7gxZ9SAVQ==",
+550 |       "dependencies": {
+551 |         "ms": "^2.0.0"
+552 |       }
+553 |     },
+554 |     "node_modules/ieee754": {
+555 |       "version": "1.2.1",
+556 |       "resolved": "https://registry.npmjs.org/ieee754/-/ieee754-1.2.1.tgz",
+557 |       "integrity": "sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==",
+558 |       "funding": [
+559 |         {
+560 |           "type": "github",
+561 |           "url": "https://github.com/sponsors/feross"
+562 |         },
+563 |         {
+564 |           "type": "patreon",
+565 |           "url": "https://www.patreon.com/feross"
+566 |         },
+567 |         {
+568 |           "type": "consulting",
+569 |           "url": "https://feross.org/support"
+570 |         }
+571 |       ]
+572 |     },
+573 |     "node_modules/isomorphic-ws": {
+574 |       "version": "4.0.1",
+575 |       "resolved": "https://registry.npmjs.org/isomorphic-ws/-/isomorphic-ws-4.0.1.tgz",
+576 |       "integrity": "sha512-BhBvN2MBpWTaSHdWRb/bwdZJ1WaehQ2L1KngkCkfLUGF0mAWAT1sQUQacEmQ0jXkFw/czDXPNQSL5u2/Krsz1w==",
+577 |       "peerDependencies": {
+578 |         "ws": "*"
+579 |       }
+580 |     },
+581 |     "node_modules/jayson": {
+582 |       "version": "4.1.0",
+583 |       "resolved": "https://registry.npmjs.org/jayson/-/jayson-4.1.0.tgz",
+584 |       "integrity": "sha512-R6JlbyLN53Mjku329XoRT2zJAE6ZgOQ8f91ucYdMCD4nkGCF9kZSrcGXpHIU4jeKj58zUZke2p+cdQchU7Ly7A==",
+585 |       "dependencies": {
+586 |         "@types/connect": "^3.4.33",
+587 |         "@types/node": "^12.12.54",
+588 |         "@types/ws": "^7.4.4",
+589 |         "commander": "^2.20.3",
+590 |         "delay": "^5.0.0",
+591 |         "es6-promisify": "^5.0.0",
+592 |         "eyes": "^0.1.8",
+593 |         "isomorphic-ws": "^4.0.1",
+594 |         "json-stringify-safe": "^5.0.1",
+595 |         "JSONStream": "^1.3.5",
+596 |         "uuid": "^8.3.2",
+597 |         "ws": "^7.4.5"
+598 |       },
+599 |       "bin": {
+600 |         "jayson": "bin/jayson.js"
+601 |       },
+602 |       "engines": {
+603 |         "node": ">=8"
+604 |       }
+605 |     },
+606 |     "node_modules/jayson/node_modules/commander": {
+607 |       "version": "2.20.3",
+608 |       "resolved": "https://registry.npmjs.org/commander/-/commander-2.20.3.tgz",
+609 |       "integrity": "sha512-GpVkmM8vF2vQUkj2LvZmD35JxeJOLCwJ9cUkugyk2nuhbv3+mJvpLYYt+0+USMxE+oj+ey/lJEnhZw75x/OMcQ=="
+610 |     },
+611 |     "node_modules/json-stringify-safe": {
+612 |       "version": "5.0.1",
+613 |       "resolved": "https://registry.npmjs.org/json-stringify-safe/-/json-stringify-safe-5.0.1.tgz",
+614 |       "integrity": "sha512-ZClg6AaYvamvYEE82d3Iyd3vSSIjQ+odgjaTzRuO3s7toCdFKczob2i0zCh7JE8kWn17yvAWhUVxvqGwUalsRA=="
+615 |     },
+616 |     "node_modules/jsonparse": {
+617 |       "version": "1.3.1",
+618 |       "resolved": "https://registry.npmjs.org/jsonparse/-/jsonparse-1.3.1.tgz",
+619 |       "integrity": "sha512-POQXvpdL69+CluYsillJ7SUhKvytYjW9vG/GKpnf+xP8UWgYEM/RaMzHHofbALDiKbbP1W8UEYmgGl39WkPZsg==",
+620 |       "engines": [
+621 |         "node >= 0.2.0"
+622 |       ]
+623 |     },
+624 |     "node_modules/JSONStream": {
+625 |       "version": "1.3.5",
+626 |       "resolved": "https://registry.npmjs.org/JSONStream/-/JSONStream-1.3.5.tgz",
+627 |       "integrity": "sha512-E+iruNOY8VV9s4JEbe1aNEm6MiszPRr/UfcHMz0TQh1BXSxHK+ASV1R6W4HpjBhSeS+54PIsAMCBmwD06LLsqQ==",
+628 |       "dependencies": {
+629 |         "jsonparse": "^1.2.0",
+630 |         "through": ">=2.2.7 <3"
+631 |       },
+632 |       "bin": {
+633 |         "JSONStream": "bin.js"
+634 |       },
+635 |       "engines": {
+636 |         "node": "*"
+637 |       }
+638 |     },
+639 |     "node_modules/mime-db": {
+640 |       "version": "1.52.0",
+641 |       "resolved": "https://registry.npmjs.org/mime-db/-/mime-db-1.52.0.tgz",
+642 |       "integrity": "sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg==",
+643 |       "engines": {
+644 |         "node": ">= 0.6"
+645 |       }
+646 |     },
+647 |     "node_modules/mime-types": {
+648 |       "version": "2.1.35",
+649 |       "resolved": "https://registry.npmjs.org/mime-types/-/mime-types-2.1.35.tgz",
+650 |       "integrity": "sha512-ZDY+bPm5zTTF+YpCrAU9nK0UgICYPT0QtT1NZWFv4s++TNkcgVaT0g6+4R2uI4MjQjzysHB1zxuWL50hzaeXiw==",
+651 |       "dependencies": {
+652 |         "mime-db": "1.52.0"
+653 |       },
+654 |       "engines": {
+655 |         "node": ">= 0.6"
+656 |       }
+657 |     },
+658 |     "node_modules/ms": {
+659 |       "version": "2.1.3",
+660 |       "resolved": "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz",
+661 |       "integrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA=="
+662 |     },
+663 |     "node_modules/node-fetch": {
+664 |       "version": "2.7.0",
+665 |       "resolved": "https://registry.npmjs.org/node-fetch/-/node-fetch-2.7.0.tgz",
+666 |       "integrity": "sha512-c4FRfUm/dbcWZ7U+1Wq0AwCyFL+3nt2bEw05wfxSz+DWpWsitgmSgYmy2dQdWyKC1694ELPqMs/YzUSNozLt8A==",
+667 |       "dependencies": {
+668 |         "whatwg-url": "^5.0.0"
+669 |       },
+670 |       "engines": {
+671 |         "node": "4.x || >=6.0.0"
+672 |       },
+673 |       "peerDependencies": {
+674 |         "encoding": "^0.1.0"
+675 |       },
+676 |       "peerDependenciesMeta": {
+677 |         "encoding": {
+678 |           "optional": true
+679 |         }
+680 |       }
+681 |     },
+682 |     "node_modules/node-gyp-build": {
+683 |       "version": "4.8.1",
+684 |       "resolved": "https://registry.npmjs.org/node-gyp-build/-/node-gyp-build-4.8.1.tgz",
+685 |       "integrity": "sha512-OSs33Z9yWr148JZcbZd5WiAXhh/n9z8TxQcdMhIOlpN9AhWpLfvVFO73+m77bBABQMaY9XSvIa+qk0jlI7Gcaw==",
+686 |       "optional": true,
+687 |       "bin": {
+688 |         "node-gyp-build": "bin.js",
+689 |         "node-gyp-build-optional": "optional.js",
+690 |         "node-gyp-build-test": "build-test.js"
+691 |       }
+692 |     },
+693 |     "node_modules/proxy-from-env": {
+694 |       "version": "1.1.0",
+695 |       "resolved": "https://registry.npmjs.org/proxy-from-env/-/proxy-from-env-1.1.0.tgz",
+696 |       "integrity": "sha512-D+zkORCbA9f1tdWRK0RaCR3GPv50cMxcrz4X8k5LTSUD1Dkw47mKJEZQNunItRTkWwgtaUSo1RVFRIG9ZXiFYg=="
+697 |     },
+698 |     "node_modules/regenerator-runtime": {
+699 |       "version": "0.14.1",
+700 |       "resolved": "https://registry.npmjs.org/regenerator-runtime/-/regenerator-runtime-0.14.1.tgz",
+701 |       "integrity": "sha512-dYnhHh0nJoMfnkZs6GmmhFknAGRrLznOu5nc9ML+EJxGvrx6H7teuevqVqCuPcPK//3eDrrjQhehXVx9cnkGdw=="
+702 |     },
+703 |     "node_modules/rpc-websockets": {
+704 |       "version": "7.11.0",
+705 |       "resolved": "https://registry.npmjs.org/rpc-websockets/-/rpc-websockets-7.11.0.tgz",
+706 |       "integrity": "sha512-IkLYjayPv6Io8C/TdCL5gwgzd1hFz2vmBZrjMw/SPEXo51ETOhnzgS4Qy5GWi2JQN7HKHa66J3+2mv0fgNh/7w==",
+707 |       "dependencies": {
+708 |         "eventemitter3": "^4.0.7",
+709 |         "uuid": "^8.3.2",
+710 |         "ws": "^8.5.0"
+711 |       },
+712 |       "funding": {
+713 |         "type": "paypal",
+714 |         "url": "https://paypal.me/kozjak"
+715 |       },
+716 |       "optionalDependencies": {
+717 |         "bufferutil": "^4.0.1",
+718 |         "utf-8-validate": "^5.0.2"
+719 |       }
+720 |     },
+721 |     "node_modules/rpc-websockets/node_modules/ws": {
+722 |       "version": "8.17.0",
+723 |       "resolved": "https://registry.npmjs.org/ws/-/ws-8.17.0.tgz",
+724 |       "integrity": "sha512-uJq6108EgZMAl20KagGkzCKfMEjxmKvZHG7Tlq0Z6nOky7YF7aq4mOx6xK8TJ/i1LeK4Qus7INktacctDgY8Ow==",
+725 |       "engines": {
+726 |         "node": ">=10.0.0"
+727 |       },
+728 |       "peerDependencies": {
+729 |         "bufferutil": "^4.0.1",
+730 |         "utf-8-validate": ">=5.0.2"
+731 |       },
+732 |       "peerDependenciesMeta": {
+733 |         "bufferutil": {
+734 |           "optional": true
+735 |         },
+736 |         "utf-8-validate": {
+737 |           "optional": true
+738 |         }
+739 |       }
+740 |     },
+741 |     "node_modules/safe-buffer": {
+742 |       "version": "5.2.1",
+743 |       "resolved": "https://registry.npmjs.org/safe-buffer/-/safe-buffer-5.2.1.tgz",
+744 |       "integrity": "sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ==",
+745 |       "funding": [
+746 |         {
+747 |           "type": "github",
+748 |           "url": "https://github.com/sponsors/feross"
+749 |         },
+750 |         {
+751 |           "type": "patreon",
+752 |           "url": "https://www.patreon.com/feross"
+753 |         },
+754 |         {
+755 |           "type": "consulting",
+756 |           "url": "https://feross.org/support"
+757 |         }
+758 |       ]
+759 |     },
+760 |     "node_modules/superstruct": {
+761 |       "version": "0.14.2",
+762 |       "resolved": "https://registry.npmjs.org/superstruct/-/superstruct-0.14.2.tgz",
+763 |       "integrity": "sha512-nPewA6m9mR3d6k7WkZ8N8zpTWfenFH3q9pA2PkuiZxINr9DKB2+40wEQf0ixn8VaGuJ78AB6iWOtStI+/4FKZQ=="
+764 |     },
+765 |     "node_modules/text-encoding-utf-8": {
+766 |       "version": "1.0.2",
+767 |       "resolved": "https://registry.npmjs.org/text-encoding-utf-8/-/text-encoding-utf-8-1.0.2.tgz",
+768 |       "integrity": "sha512-8bw4MY9WjdsD2aMtO0OzOCY3pXGYNx2d2FfHRVUKkiCPDWjKuOlhLVASS+pD7VkLTVjW268LYJHwsnPFlBpbAg=="
+769 |     },
+770 |     "node_modules/through": {
+771 |       "version": "2.3.8",
+772 |       "resolved": "https://registry.npmjs.org/through/-/through-2.3.8.tgz",
+773 |       "integrity": "sha512-w89qg7PI8wAdvX60bMDP+bFoD5Dvhm9oLheFp5O4a2QF0cSBGsBX4qZmadPMvVqlLJBBci+WqGGOAPvcDeNSVg=="
+774 |     },
+775 |     "node_modules/tr46": {
+776 |       "version": "0.0.3",
+777 |       "resolved": "https://registry.npmjs.org/tr46/-/tr46-0.0.3.tgz",
+778 |       "integrity": "sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw=="
+779 |     },
+780 |     "node_modules/typescript": {
+781 |       "version": "5.4.5",
+782 |       "resolved": "https://registry.npmjs.org/typescript/-/typescript-5.4.5.tgz",
+783 |       "integrity": "sha512-vcI4UpRgg81oIRUFwR0WSIHKt11nJ7SAVlYNIu+QpqeyXP+gpQJy/Z4+F0aGxSE4MqwjyXvW/TzgkLAx2AGHwQ==",
+784 |       "dev": true,
+785 |       "bin": {
+786 |         "tsc": "bin/tsc",
+787 |         "tsserver": "bin/tsserver"
+788 |       },
+789 |       "engines": {
+790 |         "node": ">=14.17"
+791 |       }
+792 |     },
+793 |     "node_modules/utf-8-validate": {
+794 |       "version": "5.0.10",
+795 |       "resolved": "https://registry.npmjs.org/utf-8-validate/-/utf-8-validate-5.0.10.tgz",
+796 |       "integrity": "sha512-Z6czzLq4u8fPOyx7TU6X3dvUZVvoJmxSQ+IcrlmagKhilxlhZgxPK6C5Jqbkw1IDUmFTM+cz9QDnnLTwDz/2gQ==",
+797 |       "hasInstallScript": true,
+798 |       "optional": true,
+799 |       "dependencies": {
+800 |         "node-gyp-build": "^4.3.0"
+801 |       },
+802 |       "engines": {
+803 |         "node": ">=6.14.2"
+804 |       }
+805 |     },
+806 |     "node_modules/uuid": {
+807 |       "version": "8.3.2",
+808 |       "resolved": "https://registry.npmjs.org/uuid/-/uuid-8.3.2.tgz",
+809 |       "integrity": "sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==",
+810 |       "bin": {
+811 |         "uuid": "dist/bin/uuid"
+812 |       }
+813 |     },
+814 |     "node_modules/webidl-conversions": {
+815 |       "version": "3.0.1",
+816 |       "resolved": "https://registry.npmjs.org/webidl-conversions/-/webidl-conversions-3.0.1.tgz",
+817 |       "integrity": "sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ=="
+818 |     },
+819 |     "node_modules/whatwg-url": {
+820 |       "version": "5.0.0",
+821 |       "resolved": "https://registry.npmjs.org/whatwg-url/-/whatwg-url-5.0.0.tgz",
+822 |       "integrity": "sha512-saE57nupxk6v3HY35+jzBwYa0rKSy0XR8JSxZPwgLr7ys0IBzhGviA1/TUGJLmSVqs8pb9AnvICXEuOHLprYTw==",
+823 |       "dependencies": {
+824 |         "tr46": "~0.0.3",
+825 |         "webidl-conversions": "^3.0.0"
+826 |       }
+827 |     },
+828 |     "node_modules/ws": {
+829 |       "version": "7.5.9",
+830 |       "resolved": "https://registry.npmjs.org/ws/-/ws-7.5.9.tgz",
+831 |       "integrity": "sha512-F+P9Jil7UiSKSkppIiD94dN07AwvFixvLIj1Og1Rl9GGMuNipJnV9JzjD6XuqmAeiswGvUmNLjr5cFuXwNS77Q==",
+832 |       "engines": {
+833 |         "node": ">=8.3.0"
+834 |       },
+835 |       "peerDependencies": {
+836 |         "bufferutil": "^4.0.1",
+837 |         "utf-8-validate": "^5.0.2"
+838 |       },
+839 |       "peerDependenciesMeta": {
+840 |         "bufferutil": {
+841 |           "optional": true
+842 |         },
+843 |         "utf-8-validate": {
+844 |           "optional": true
+845 |         }
+846 |       }
+847 |     }
+848 |   }
+849 | }
+850 | 
+
+
+----------------------------------------------------------------------------------------------------
+/package.json:
+----------------------------------------------------------------------------------------------------
+ 1 | {
+ 2 |   "name": "solana-pump-fun",
+ 3 |   "version": "1.0.0",
+ 4 |   "description": "",
+ 5 |   "main": "index.js",
+ 6 |   "scripts": {
+ 7 |     "test": "echo \"Error: no test specified\" && exit 1"
+ 8 |   },
+ 9 |   "keywords": [],
+10 |   "author": "",
+11 |   "license": "ISC",
+12 |   "devDependencies": {
+13 |     "typescript": "^5.4.5"
+14 |   },
+15 |   "dependencies": {
+16 |     "@solana/spl-token": "^0.4.6",
+17 |     "@solana/web3.js": "^1.91.8",
+18 |     "axios": "^1.6.8",
+19 |     "bs58": "^5.0.0"
+20 |   }
+21 | }
+22 | 
+
+
+----------------------------------------------------------------------------------------------------
+/readme.md:
+----------------------------------------------------------------------------------------------------
+  1 | 
+  2 | # Solana Pump Fun
+  3 | New: There is now also a telegram bot available for my [bundler]([https://nodejs.org/](https://github.com/bilix-software/pump-fun-bundler)) at: https://t.me/viper_pump_bot.  Note: this is a first version so any feedback is appreciated.
+  4 | 
+  5 | Notice: This project was inspired by https://github.com/Allen-Taylor/pump_fun_py and modified for use in typescript with some extra additions.
+  6 | Also modified the code to send the associated token account creation in a single transaction with the buy or sell for increased speed.
+  7 | 
+  8 | Solana Pump Fun is an open-source package designed to facilitate the execution and simulation of buy and sell transactions for pump.fun on the Solana blockchain. This tool is useful for developers and enthusiasts looking to understand transaction mechanics and resource consumption on Solana.
+  9 | 
+ 10 | If you're looking for a launch bundler check out my other repository at: https://github.com/bilix-software/pump-fun-token-launcher
+ 11 | 
+ 12 | Services are for hire, contact me at https://t.me/bilixsoftware or info@bilix.io
+ 13 | ## Features
+ 14 | 
+ 15 | - Simulates buy and sell transactions for pump.fun on the Solana blockchain.
+ 16 | - Executes buy and sell transactions for pump.fun on the Solana blockchain.
+ 17 | - Provides detailed logs of transaction steps and resource consumption.
+ 18 | - Easy to use and integrate into existing projects.
+ 19 | 
+ 20 | ## Prerequisites
+ 21 | 
+ 22 | Ensure you have the following installed:
+ 23 | 
+ 24 | - [Node.js](https://nodejs.org/) (version 14 or later)
+ 25 | - [npm](https://www.npmjs.com/)
+ 26 | - [TypeScript](https://www.typescriptlang.org/)
+ 27 | 
+ 28 | ## Installation
+ 29 | 
+ 30 | To install the package, clone the repository and install the dependencies:
+ 31 | 
+ 32 | ```bash
+ 33 | git clone https://github.com/bilix-software/solana-pump-fun.git
+ 34 | cd solana-pump-fun
+ 35 | npm install
+ 36 | ```
+ 37 | 
+ 38 | ## Configuration
+ 39 | 
+ 40 | Before running the simulation, you need to set up your private key and specify the token mint. Open the `example.ts` file and replace the placeholder values with your actual private key and token mint address.
+ 41 | 
+ 42 | ### Example Configuration
+ 43 | 
+ 44 | In `example.ts`, set your private key, token mint address, and transaction mode:
+ 45 | 
+ 46 | ```typescript
+ 47 | const privateKey = 'your_private_key'; // Replace with your actual private key
+ 48 | const mintAddress = 'your_token_mint_address'; // Replace with actual token mint address
+ 49 | const txMode = TransactionMode.Simulation; // Set to Simulation to test, Execution to perform
+ 50 | ```
+ 51 | 
+ 52 | ## Usage
+ 53 | 
+ 54 | To run the example simulation scripts, use Node.js to execute the `example.js` file or compile and run the `example.ts` file. This will simulate buy and sell transactions and output detailed logs.
+ 55 | 
+ 56 | ### Running the Simulation
+ 57 | 
+ 58 | 1. Ensure your `example.ts` file is correctly configured.
+ 59 | 2. Compile the TypeScript files:
+ 60 | 
+ 61 | ```bash
+ 62 | npx tsc
+ 63 | ```
+ 64 | 
+ 65 | 3. Run the compiled JavaScript file:
+ 66 | 
+ 67 | ```bash
+ 68 | node example.js
+ 69 | ```
+ 70 | 
+ 71 | ### Simulate Transactions
+ 72 | 
+ 73 | If you prefer to run the transactions in simulation mode (without actual transactions on the blockchain), ensure the `txMode` is set to `TransactionMode.Simulation`. This mode will help you understand the transaction process without incurring any cost.
+ 74 | 
+ 75 | ### Example Output
+ 76 | 
+ 77 | Below is an example of the output generated when running the simulation:
+ 78 | 
+ 79 | ![Example Output](image.png)
+ 80 | 
+ 81 | ## Project Structure
+ 82 | 
+ 83 | - `src/`: Contains the source code for the package.
+ 84 | - `example.js`: Example script to demonstrate how to use the package.
+ 85 | - `example.ts`: TypeScript version of the example script.
+ 86 | - `package.json`: Project metadata and dependencies.
+ 87 | - `tsconfig.json`: TypeScript configuration file.
+ 88 | 
+ 89 | ## Contributing
+ 90 | 
+ 91 | Contributions are welcome! Please fork the repository and submit a pull request with your improvements.
+ 92 | 
+ 93 | 1. Fork the repository
+ 94 | 2. Create your feature branch (`git checkout -b feature/YourFeature`)
+ 95 | 3. Commit your changes (`git commit -m 'Add some feature'`)
+ 96 | 4. Push to the branch (`git push origin feature/YourFeature`)
+ 97 | 5. Open a pull request
+ 98 | 
+ 99 | ## License
+100 | 
+101 | This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+102 | 
+103 | ## Tips
+104 | JATt1ta9GcbVMThdL18rXUqHn3toCMjWkHWtxM5WN3ec
+105 | 
+
+
+----------------------------------------------------------------------------------------------------
+/src/api.ts:
+----------------------------------------------------------------------------------------------------
+ 1 | import axios from 'axios';
+ 2 | 
+ 3 | export async function getCoinData(mintStr: string) {
+ 4 |     try {
+ 5 |         const url = `https://frontend-api.pump.fun/coins/${mintStr}`;
+ 6 |         const response = await axios.get(url, {
+ 7 |             headers: {
+ 8 |                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+ 9 |                 "Accept": "*/*",
+10 |                 "Accept-Language": "en-US,en;q=0.5",
+11 |                 "Accept-Encoding": "gzip, deflate, br",
+12 |                 "Referer": "https://www.pump.fun/",
+13 |                 "Origin": "https://www.pump.fun",
+14 |                 "Connection": "keep-alive",
+15 |                 "Sec-Fetch-Dest": "empty",
+16 |                 "Sec-Fetch-Mode": "cors",
+17 |                 "Sec-Fetch-Site": "cross-site",
+18 |                 "If-None-Match": 'W/"43a-tWaCcS4XujSi30IFlxDCJYxkMKg"'
+19 |             }
+20 |         });
+21 |         if (response.status === 200) {
+22 |             return response.data;
+23 |         } else {
+24 |             console.error('Failed to retrieve coin data:', response.status);
+25 |             return null;
+26 |         }
+27 |     } catch (error) {
+28 |         console.error('Error fetching coin data:', error);
+29 |         return null;
+30 |     }
+31 | }
+
+
+----------------------------------------------------------------------------------------------------
+/src/constants.ts:
+----------------------------------------------------------------------------------------------------
+ 1 | import { PublicKey, SystemProgram } from '@solana/web3.js';
+ 2 | 
+ 3 | export const GLOBAL = new PublicKey("4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf");
+ 4 | export const FEE_RECIPIENT = new PublicKey("CebN5WGQ4jvEPvsVU4EoHEpgzq1VV7AbicfhtW4xC9iM");
+ 5 | export const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+ 6 | export const ASSOC_TOKEN_ACC_PROG = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")
+ 7 | export const RENT = new PublicKey("SysvarRent111111111111111111111111111111111");
+ 8 | export const PUMP_FUN_PROGRAM = new PublicKey("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P");
+ 9 | export const PUMP_FUN_ACCOUNT = new PublicKey("Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1");
+10 | export const SYSTEM_PROGRAM_ID = SystemProgram.programId;
+
+
+----------------------------------------------------------------------------------------------------
+/src/swap.ts:
+----------------------------------------------------------------------------------------------------
+  1 | import { Connection, LAMPORTS_PER_SOL, PublicKey, Transaction, TransactionInstruction, clusterApiUrl } from '@solana/web3.js';
+  2 | import { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+  3 | import { getKeyPairFromPrivateKey, createTransaction, sendAndConfirmTransactionWrapper, bufferFromUInt64 } from './utils';
+  4 | import { getCoinData } from './api';
+  5 | import { TransactionMode } from './types';
+  6 | import { GLOBAL, FEE_RECIPIENT, SYSTEM_PROGRAM_ID, RENT, PUMP_FUN_ACCOUNT, PUMP_FUN_PROGRAM, ASSOC_TOKEN_ACC_PROG } from './constants';
+  7 | 
+  8 | export async function pumpFunBuy(transactionMode: TransactionMode, payerPrivateKey: string, mintStr: string, solIn: number, priorityFeeInSol: number = 0, slippageDecimal: number = 0.25) {
+  9 |     try {
+ 10 |         const connection = new Connection(
+ 11 |             clusterApiUrl("mainnet-beta"),
+ 12 |             'confirmed'
+ 13 |         );
+ 14 | 
+ 15 |         const coinData = await getCoinData(mintStr);
+ 16 |         if (!coinData) {
+ 17 |             console.error('Failed to retrieve coin data...');
+ 18 |             return;
+ 19 |         }
+ 20 | 
+ 21 |         const payer = await getKeyPairFromPrivateKey(payerPrivateKey);
+ 22 |         const owner = payer.publicKey;
+ 23 |         const mint = new PublicKey(mintStr);
+ 24 | 
+ 25 |         const txBuilder = new Transaction();
+ 26 | 
+ 27 |         const tokenAccountAddress = await getAssociatedTokenAddress(
+ 28 |             mint,
+ 29 |             owner,
+ 30 |             false
+ 31 |         );
+ 32 | 
+ 33 |         const tokenAccountInfo = await connection.getAccountInfo(tokenAccountAddress);
+ 34 | 
+ 35 |         let tokenAccount: PublicKey;
+ 36 |         if (!tokenAccountInfo) {
+ 37 |             txBuilder.add(
+ 38 |                 createAssociatedTokenAccountInstruction(
+ 39 |                     payer.publicKey,
+ 40 |                     tokenAccountAddress,
+ 41 |                     payer.publicKey,
+ 42 |                     mint
+ 43 |                 )
+ 44 |             );
+ 45 |             tokenAccount = tokenAccountAddress;
+ 46 |         } else {
+ 47 |             tokenAccount = tokenAccountAddress;
+ 48 |         }
+ 49 | 
+ 50 |         const solInLamports = solIn * LAMPORTS_PER_SOL;
+ 51 |         const tokenOut = Math.floor(solInLamports * coinData["virtual_token_reserves"] / coinData["virtual_sol_reserves"]);
+ 52 | 
+ 53 |         const solInWithSlippage = solIn * (1 + slippageDecimal);
+ 54 |         const maxSolCost = Math.floor(solInWithSlippage * LAMPORTS_PER_SOL);
+ 55 |         const ASSOCIATED_USER = tokenAccount;
+ 56 |         const USER = owner;
+ 57 |         const BONDING_CURVE = new PublicKey(coinData['bonding_curve']);
+ 58 |         const ASSOCIATED_BONDING_CURVE = new PublicKey(coinData['associated_bonding_curve']);
+ 59 | 
+ 60 |         const keys = [
+ 61 |             { pubkey: GLOBAL, isSigner: false, isWritable: false },
+ 62 |             { pubkey: FEE_RECIPIENT, isSigner: false, isWritable: true },
+ 63 |             { pubkey: mint, isSigner: false, isWritable: false },
+ 64 |             { pubkey: BONDING_CURVE, isSigner: false, isWritable: true },
+ 65 |             { pubkey: ASSOCIATED_BONDING_CURVE, isSigner: false, isWritable: true },
+ 66 |             { pubkey: ASSOCIATED_USER, isSigner: false, isWritable: true },
+ 67 |             { pubkey: USER, isSigner: false, isWritable: true },
+ 68 |             { pubkey: SYSTEM_PROGRAM_ID, isSigner: false, isWritable: false },
+ 69 |             { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+ 70 |             { pubkey: RENT, isSigner: false, isWritable: false },
+ 71 |             { pubkey: PUMP_FUN_ACCOUNT, isSigner: false, isWritable: false },
+ 72 |             { pubkey: PUMP_FUN_PROGRAM, isSigner: false, isWritable: false },
+ 73 |         ];
+ 74 | 
+ 75 |         const data = Buffer.concat([
+ 76 |             bufferFromUInt64("16927863322537952870"),
+ 77 |             bufferFromUInt64(tokenOut),
+ 78 |             bufferFromUInt64(maxSolCost)
+ 79 |         ]);
+ 80 | 
+ 81 |         const instruction = new TransactionInstruction({
+ 82 |             keys: keys,
+ 83 |             programId: PUMP_FUN_PROGRAM,
+ 84 |             data: data
+ 85 |         });
+ 86 |         txBuilder.add(instruction);
+ 87 | 
+ 88 |         const transaction = await createTransaction(connection, txBuilder.instructions, payer.publicKey, priorityFeeInSol);
+ 89 |         if (transactionMode == TransactionMode.Execution) {
+ 90 |             const signature = await sendAndConfirmTransactionWrapper(connection, transaction, [payer]);
+ 91 |             console.log('Buy transaction confirmed:', signature);
+ 92 |         }
+ 93 |         else if (transactionMode == TransactionMode.Simulation) {
+ 94 |             const simulatedResult = await connection.simulateTransaction(transaction);
+ 95 |             console.log(simulatedResult)
+ 96 |         }
+ 97 |     } catch (error) {
+ 98 |         console.log(error);
+ 99 |     }
+100 | }
+101 | 
+102 | 
+103 | export async function pumpFunSell(transactionMode: TransactionMode, payerPrivateKey: string, mintStr: string, tokenBalance: number, priorityFeeInSol: number = 0, slippageDecimal: number = 0.25) {
+104 |     try {
+105 |         const connection = new Connection(
+106 |             clusterApiUrl("mainnet-beta"),
+107 |             'confirmed'
+108 |         );
+109 | 
+110 |         const coinData = await getCoinData(mintStr);
+111 |         if (!coinData) {
+112 |             console.error('Failed to retrieve coin data...');
+113 |             return;
+114 |         }
+115 | 
+116 |         const payer = await getKeyPairFromPrivateKey(payerPrivateKey);
+117 |         const owner = payer.publicKey;
+118 |         const mint = new PublicKey(mintStr);
+119 |         const txBuilder = new Transaction();
+120 | 
+121 |         const tokenAccountAddress = await getAssociatedTokenAddress(
+122 |             mint,
+123 |             owner,
+124 |             false
+125 |         );
+126 | 
+127 |         const tokenAccountInfo = await connection.getAccountInfo(tokenAccountAddress);
+128 | 
+129 |         let tokenAccount: PublicKey;
+130 |         if (!tokenAccountInfo) {
+131 |             txBuilder.add(
+132 |                 createAssociatedTokenAccountInstruction(
+133 |                     payer.publicKey,
+134 |                     tokenAccountAddress,
+135 |                     payer.publicKey,
+136 |                     mint
+137 |                 )
+138 |             );
+139 |             tokenAccount = tokenAccountAddress;
+140 |         } else {
+141 |             tokenAccount = tokenAccountAddress;
+142 |         }
+143 | 
+144 |         const minSolOutput = Math.floor(tokenBalance! * (1 - slippageDecimal) * coinData["virtual_sol_reserves"] / coinData["virtual_token_reserves"]);
+145 | 
+146 |         const keys = [
+147 |             { pubkey: GLOBAL, isSigner: false, isWritable: false },
+148 |             { pubkey: FEE_RECIPIENT, isSigner: false, isWritable: true },
+149 |             { pubkey: mint, isSigner: false, isWritable: false },
+150 |             { pubkey: new PublicKey(coinData['bonding_curve']), isSigner: false, isWritable: true },
+151 |             { pubkey: new PublicKey(coinData['associated_bonding_curve']), isSigner: false, isWritable: true },
+152 |             { pubkey: tokenAccount, isSigner: false, isWritable: true },
+153 |             { pubkey: owner, isSigner: false, isWritable: true },
+154 |             { pubkey: SYSTEM_PROGRAM_ID, isSigner: false, isWritable: false },
+155 |             { pubkey: ASSOC_TOKEN_ACC_PROG, isSigner: false, isWritable: false },
+156 |             { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+157 |             { pubkey: PUMP_FUN_ACCOUNT, isSigner: false, isWritable: false },
+158 |             { pubkey: PUMP_FUN_PROGRAM, isSigner: false, isWritable: false }
+159 |         ];
+160 | 
+161 |         const data = Buffer.concat([
+162 |             bufferFromUInt64("12502976635542562355"),
+163 |             bufferFromUInt64(tokenBalance),
+164 |             bufferFromUInt64(minSolOutput)
+165 |         ]);
+166 | 
+167 |         const instruction = new TransactionInstruction({
+168 |             keys: keys,
+169 |             programId: PUMP_FUN_PROGRAM,
+170 |             data: data
+171 |         });
+172 |         txBuilder.add(instruction);
+173 | 
+174 |         const transaction = await createTransaction(connection, txBuilder.instructions, payer.publicKey, priorityFeeInSol);
+175 | 
+176 |         if (transactionMode == TransactionMode.Execution) {
+177 |             const signature = await sendAndConfirmTransactionWrapper(connection, transaction, [payer]);
+178 |             console.log('Sell transaction confirmed:', signature);
+179 |         }
+180 |         else if (transactionMode == TransactionMode.Simulation) {
+181 |             const simulatedResult = await connection.simulateTransaction(transaction);
+182 |             console.log(simulatedResult)
+183 |         }
+184 |     }
+185 |     catch (error) {
+186 |         console.log(error)
+187 |     }
+188 | }
+189 | 
+
+
+----------------------------------------------------------------------------------------------------
+/src/types.ts:
+----------------------------------------------------------------------------------------------------
+1 | export enum TransactionMode{
+2 |     Simulation,
+3 |     Execution
+4 | }
+
+
+----------------------------------------------------------------------------------------------------
+/src/utils.ts:
+----------------------------------------------------------------------------------------------------
+ 1 | import { ComputeBudgetProgram, Keypair } from '@solana/web3.js';
+ 2 | import { Connection, PublicKey, Transaction, TransactionInstruction, sendAndConfirmTransaction } from '@solana/web3.js';
+ 3 | import bs58 from 'bs58';
+ 4 | 
+ 5 | export async function getKeyPairFromPrivateKey(key: string) {
+ 6 |     return Keypair.fromSecretKey(
+ 7 |         new Uint8Array(bs58.decode(key))
+ 8 |     );
+ 9 | }
+10 | 
+11 | export async function createTransaction(
+12 |   connection: Connection,
+13 |   instructions: TransactionInstruction[],
+14 |   payer: PublicKey,
+15 |   priorityFeeInSol: number = 0
+16 | ): Promise<Transaction> {
+17 |   const modifyComputeUnits = ComputeBudgetProgram.setComputeUnitLimit({
+18 |       units: 1000000,
+19 |   });
+20 | 
+21 |   const transaction = new Transaction().add(modifyComputeUnits);
+22 | 
+23 |   if (priorityFeeInSol > 0) {
+24 |       const microLamports = priorityFeeInSol * 1_000_000_000; // convert SOL to microLamports
+25 |       const addPriorityFee = ComputeBudgetProgram.setComputeUnitPrice({
+26 |           microLamports,
+27 |       });
+28 |       transaction.add(addPriorityFee);
+29 |   }
+30 | 
+31 |   transaction.add(...instructions);
+32 | 
+33 |   transaction.feePayer = payer;
+34 |   transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+35 |   return transaction;
+36 | }
+37 | 
+38 | export async function sendAndConfirmTransactionWrapper(connection: Connection, transaction: Transaction, signers: any[]) {
+39 |     try {
+40 |         const signature = await sendAndConfirmTransaction(connection, transaction, signers, { skipPreflight: true, preflightCommitment: 'confirmed' });
+41 |         console.log('Transaction confirmed with signature:', signature);
+42 |         return signature;
+43 |     } catch (error) {
+44 |         console.error('Error sending transaction:', error);
+45 |         return null;
+46 |     }
+47 | }
+48 | 
+49 | export function bufferFromUInt64(value: number | string) {
+50 |     let buffer = Buffer.alloc(8);
+51 |     buffer.writeBigUInt64LE(BigInt(value));
+52 |     return buffer;
+53 | }
+
+
+----------------------------------------------------------------------------------------------------
+/tsconfig.json:
+----------------------------------------------------------------------------------------------------
+  1 | {
+  2 |   "compilerOptions": {
+  3 |     /* Visit https://aka.ms/tsconfig to read more about this file */
+  4 | 
+  5 |     /* Projects */
+  6 |     // "incremental": true,                              /* Save .tsbuildinfo files to allow for incremental compilation of projects. */
+  7 |     // "composite": true,                                /* Enable constraints that allow a TypeScript project to be used with project references. */
+  8 |     // "tsBuildInfoFile": "./.tsbuildinfo",              /* Specify the path to .tsbuildinfo incremental compilation file. */
+  9 |     // "disableSourceOfProjectReferenceRedirect": true,  /* Disable preferring source files instead of declaration files when referencing composite projects. */
+ 10 |     // "disableSolutionSearching": true,                 /* Opt a project out of multi-project reference checking when editing. */
+ 11 |     // "disableReferencedProjectLoad": true,             /* Reduce the number of projects loaded automatically by TypeScript. */
+ 12 | 
+ 13 |     /* Language and Environment */
+ 14 |     "target": "es2016",                                  /* Set the JavaScript language version for emitted JavaScript and include compatible library declarations. */
+ 15 |     // "lib": [],                                        /* Specify a set of bundled library declaration files that describe the target runtime environment. */
+ 16 |     // "jsx": "preserve",                                /* Specify what JSX code is generated. */
+ 17 |     // "experimentalDecorators": true,                   /* Enable experimental support for legacy experimental decorators. */
+ 18 |     // "emitDecoratorMetadata": true,                    /* Emit design-type metadata for decorated declarations in source files. */
+ 19 |     // "jsxFactory": "",                                 /* Specify the JSX factory function used when targeting React JSX emit, e.g. 'React.createElement' or 'h'. */
+ 20 |     // "jsxFragmentFactory": "",                         /* Specify the JSX Fragment reference used for fragments when targeting React JSX emit e.g. 'React.Fragment' or 'Fragment'. */
+ 21 |     // "jsxImportSource": "",                            /* Specify module specifier used to import the JSX factory functions when using 'jsx: react-jsx*'. */
+ 22 |     // "reactNamespace": "",                             /* Specify the object invoked for 'createElement'. This only applies when targeting 'react' JSX emit. */
+ 23 |     // "noLib": true,                                    /* Disable including any library files, including the default lib.d.ts. */
+ 24 |     // "useDefineForClassFields": true,                  /* Emit ECMAScript-standard-compliant class fields. */
+ 25 |     // "moduleDetection": "auto",                        /* Control what method is used to detect module-format JS files. */
+ 26 | 
+ 27 |     /* Modules */
+ 28 |     "module": "commonjs",                                /* Specify what module code is generated. */
+ 29 |     // "rootDir": "./",                                  /* Specify the root folder within your source files. */
+ 30 |     // "moduleResolution": "node10",                     /* Specify how TypeScript looks up a file from a given module specifier. */
+ 31 |     // "baseUrl": "./",                                  /* Specify the base directory to resolve non-relative module names. */
+ 32 |     // "paths": {},                                      /* Specify a set of entries that re-map imports to additional lookup locations. */
+ 33 |     // "rootDirs": [],                                   /* Allow multiple folders to be treated as one when resolving modules. */
+ 34 |     // "typeRoots": [],                                  /* Specify multiple folders that act like './node_modules/@types'. */
+ 35 |     // "types": [],                                      /* Specify type package names to be included without being referenced in a source file. */
+ 36 |     // "allowUmdGlobalAccess": true,                     /* Allow accessing UMD globals from modules. */
+ 37 |     // "moduleSuffixes": [],                             /* List of file name suffixes to search when resolving a module. */
+ 38 |     // "allowImportingTsExtensions": true,               /* Allow imports to include TypeScript file extensions. Requires '--moduleResolution bundler' and either '--noEmit' or '--emitDeclarationOnly' to be set. */
+ 39 |     // "resolvePackageJsonExports": true,                /* Use the package.json 'exports' field when resolving package imports. */
+ 40 |     // "resolvePackageJsonImports": true,                /* Use the package.json 'imports' field when resolving imports. */
+ 41 |     // "customConditions": [],                           /* Conditions to set in addition to the resolver-specific defaults when resolving imports. */
+ 42 |     // "resolveJsonModule": true,                        /* Enable importing .json files. */
+ 43 |     // "allowArbitraryExtensions": true,                 /* Enable importing files with any extension, provided a declaration file is present. */
+ 44 |     // "noResolve": true,                                /* Disallow 'import's, 'require's or '<reference>'s from expanding the number of files TypeScript should add to a project. */
+ 45 | 
+ 46 |     /* JavaScript Support */
+ 47 |     // "allowJs": true,                                  /* Allow JavaScript files to be a part of your program. Use the 'checkJS' option to get errors from these files. */
+ 48 |     // "checkJs": true,                                  /* Enable error reporting in type-checked JavaScript files. */
+ 49 |     // "maxNodeModuleJsDepth": 1,                        /* Specify the maximum folder depth used for checking JavaScript files from 'node_modules'. Only applicable with 'allowJs'. */
+ 50 | 
+ 51 |     /* Emit */
+ 52 |     // "declaration": true,                              /* Generate .d.ts files from TypeScript and JavaScript files in your project. */
+ 53 |     // "declarationMap": true,                           /* Create sourcemaps for d.ts files. */
+ 54 |     // "emitDeclarationOnly": true,                      /* Only output d.ts files and not JavaScript files. */
+ 55 |     // "sourceMap": true,                                /* Create source map files for emitted JavaScript files. */
+ 56 |     // "inlineSourceMap": true,                          /* Include sourcemap files inside the emitted JavaScript. */
+ 57 |     // "outFile": "./",                                  /* Specify a file that bundles all outputs into one JavaScript file. If 'declaration' is true, also designates a file that bundles all .d.ts output. */
+ 58 |     // "outDir": "./",                                   /* Specify an output folder for all emitted files. */
+ 59 |     // "removeComments": true,                           /* Disable emitting comments. */
+ 60 |     // "noEmit": true,                                   /* Disable emitting files from a compilation. */
+ 61 |     // "importHelpers": true,                            /* Allow importing helper functions from tslib once per project, instead of including them per-file. */
+ 62 |     // "importsNotUsedAsValues": "remove",               /* Specify emit/checking behavior for imports that are only used for types. */
+ 63 |     // "downlevelIteration": true,                       /* Emit more compliant, but verbose and less performant JavaScript for iteration. */
+ 64 |     // "sourceRoot": "",                                 /* Specify the root path for debuggers to find the reference source code. */
+ 65 |     // "mapRoot": "",                                    /* Specify the location where debugger should locate map files instead of generated locations. */
+ 66 |     // "inlineSources": true,                            /* Include source code in the sourcemaps inside the emitted JavaScript. */
+ 67 |     // "emitBOM": true,                                  /* Emit a UTF-8 Byte Order Mark (BOM) in the beginning of output files. */
+ 68 |     // "newLine": "crlf",                                /* Set the newline character for emitting files. */
+ 69 |     // "stripInternal": true,                            /* Disable emitting declarations that have '@internal' in their JSDoc comments. */
+ 70 |     // "noEmitHelpers": true,                            /* Disable generating custom helper functions like '__extends' in compiled output. */
+ 71 |     // "noEmitOnError": true,                            /* Disable emitting files if any type checking errors are reported. */
+ 72 |     // "preserveConstEnums": true,                       /* Disable erasing 'const enum' declarations in generated code. */
+ 73 |     // "declarationDir": "./",                           /* Specify the output directory for generated declaration files. */
+ 74 |     // "preserveValueImports": true,                     /* Preserve unused imported values in the JavaScript output that would otherwise be removed. */
+ 75 | 
+ 76 |     /* Interop Constraints */
+ 77 |     // "isolatedModules": true,                          /* Ensure that each file can be safely transpiled without relying on other imports. */
+ 78 |     // "verbatimModuleSyntax": true,                     /* Do not transform or elide any imports or exports not marked as type-only, ensuring they are written in the output file's format based on the 'module' setting. */
+ 79 |     // "allowSyntheticDefaultImports": true,             /* Allow 'import x from y' when a module doesn't have a default export. */
+ 80 |     "esModuleInterop": true,                             /* Emit additional JavaScript to ease support for importing CommonJS modules. This enables 'allowSyntheticDefaultImports' for type compatibility. */
+ 81 |     // "preserveSymlinks": true,                         /* Disable resolving symlinks to their realpath. This correlates to the same flag in node. */
+ 82 |     "forceConsistentCasingInFileNames": true,            /* Ensure that casing is correct in imports. */
+ 83 | 
+ 84 |     /* Type Checking */
+ 85 |     "strict": true,                                      /* Enable all strict type-checking options. */
+ 86 |     // "noImplicitAny": true,                            /* Enable error reporting for expressions and declarations with an implied 'any' type. */
+ 87 |     // "strictNullChecks": true,                         /* When type checking, take into account 'null' and 'undefined'. */
+ 88 |     // "strictFunctionTypes": true,                      /* When assigning functions, check to ensure parameters and the return values are subtype-compatible. */
+ 89 |     // "strictBindCallApply": true,                      /* Check that the arguments for 'bind', 'call', and 'apply' methods match the original function. */
+ 90 |     // "strictPropertyInitialization": true,             /* Check for class properties that are declared but not set in the constructor. */
+ 91 |     // "noImplicitThis": true,                           /* Enable error reporting when 'this' is given the type 'any'. */
+ 92 |     // "useUnknownInCatchVariables": true,               /* Default catch clause variables as 'unknown' instead of 'any'. */
+ 93 |     // "alwaysStrict": true,                             /* Ensure 'use strict' is always emitted. */
+ 94 |     // "noUnusedLocals": true,                           /* Enable error reporting when local variables aren't read. */
+ 95 |     // "noUnusedParameters": true,                       /* Raise an error when a function parameter isn't read. */
+ 96 |     // "exactOptionalPropertyTypes": true,               /* Interpret optional property types as written, rather than adding 'undefined'. */
+ 97 |     // "noImplicitReturns": true,                        /* Enable error reporting for codepaths that do not explicitly return in a function. */
+ 98 |     // "noFallthroughCasesInSwitch": true,               /* Enable error reporting for fallthrough cases in switch statements. */
+ 99 |     // "noUncheckedIndexedAccess": true,                 /* Add 'undefined' to a type when accessed using an index. */
+100 |     // "noImplicitOverride": true,                       /* Ensure overriding members in derived classes are marked with an override modifier. */
+101 |     // "noPropertyAccessFromIndexSignature": true,       /* Enforces using indexed accessors for keys declared using an indexed type. */
+102 |     // "allowUnusedLabels": true,                        /* Disable error reporting for unused labels. */
+103 |     // "allowUnreachableCode": true,                     /* Disable error reporting for unreachable code. */
+104 | 
+105 |     /* Completeness */
+106 |     // "skipDefaultLibCheck": true,                      /* Skip type checking .d.ts files that are included with TypeScript. */
+107 |     "skipLibCheck": true                                 /* Skip type checking all .d.ts files. */
+108 |   }
+109 | }
+110 | 
