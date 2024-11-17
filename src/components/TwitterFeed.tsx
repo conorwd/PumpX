@@ -340,9 +340,18 @@ export default function TwitterFeed() {
 
       // Combine with existing tweets, keeping existing data for old tweets
       setTweets(prevTweets => {
+        // Create a map of existing tweets for quick lookup
+        const existingTweetsMap = new Map(prevTweets.map(t => [t.id_str, t]));
+        
+        // Combine new and existing tweets, preferring new tweet data
         const allTweets = [...enrichedNewTweets, ...prevTweets]
+          .filter((tweet, index, self) => 
+            // Keep only the first occurrence of each tweet
+            index === self.findIndex(t => t.id_str === tweet.id_str)
+          )
           .sort((a, b) => new Date(b.tweet_created_at).getTime() - new Date(a.tweet_created_at).getTime())
-          .slice(0, 100); // Keep last 100 tweets instead of 10
+          .slice(0, 100);
+          
         return allTweets;
       });
       setLastFetchTime(Date.now());
@@ -372,10 +381,13 @@ export default function TwitterFeed() {
         return updateTokenPrice(tweet);
       })
     );
+
     // Sort tweets by creation time before updating state
-    setTweets(updatedTweets.sort((a, b) => 
-      new Date(b.tweet_created_at).getTime() - new Date(a.tweet_created_at).getTime()
-    ));
+    setTweets(
+      updatedTweets
+        .sort((a, b) => new Date(b.tweet_created_at).getTime() - new Date(a.tweet_created_at).getTime())
+        .slice(0, 100)
+    );
   };
 
   useEffect(() => {
