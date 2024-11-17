@@ -20,6 +20,8 @@ export default function TradingSettings() {
     setSlippage,
     minFollowers,
     setMinFollowers,
+    autoBuyEnabled,
+    setAutoBuyEnabled,
   } = useTradingContext();
 
   const [mounted, setMounted] = useState(false);
@@ -155,19 +157,21 @@ export default function TradingSettings() {
           <div className="flex items-center space-x-3">
             <span className="text-sm text-gray-400">Auto Trading</span>
             <button
-              onClick={() => {
-                // Removed autoBuyEnabled state
-              }}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-500/50`}
+              onClick={() => setAutoBuyEnabled(!autoBuyEnabled)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-500/50 ${
+                autoBuyEnabled ? 'bg-yellow-500' : 'bg-gray-700'
+              }`}
               data-tooltip-id="auto-buy-tooltip"
             >
               <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  autoBuyEnabled ? 'translate-x-6' : 'translate-x-1'
+                }`}
               />
             </button>
             <ReactTooltip
               id="auto-buy-tooltip"
-              content="Auto trading disabled"
+              content={autoBuyEnabled ? "Auto trading enabled" : "Auto trading disabled"}
               place="top"
             />
           </div>

@@ -64,6 +64,7 @@ export default function TwitterFeed() {
   const [txSignatures, setTxSignatures] = useState<{ [key: string]: string }>({});
   const [pumpFunClient, setPumpFunClient] = useState<PumpFunClient | null>(null);
   const [lastFetchTime, setLastFetchTime] = useState(Date.now());
+  const [currentTime, setCurrentTime] = useState(Date.now());
   
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const priceIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -200,20 +201,30 @@ export default function TwitterFeed() {
     return roundedMarketCap.toString();
   };
 
-  const formatTimeSinceCreation = (timestamp: number): string => {
-    const now = Date.now();
-    const diffInSeconds = Math.floor((now - timestamp) / 1000);
+  const formatTweetTime = (timestamp: string) => {
+    const seconds = Math.floor((currentTime - new Date(timestamp).getTime()) / 1000);
     
-    if (diffInSeconds < 60) {
-      return `${diffInSeconds}s`;
-    } else if (diffInSeconds < 3600) {
-      const minutes = Math.floor(diffInSeconds / 60);
+    if (seconds < 60) {
+      return `${seconds}s`;
+    } else if (seconds < 3600) {
+      const minutes = Math.floor(seconds / 60);
       return `${minutes}m`;
-    } else {
-      const hours = Math.floor(diffInSeconds / 3600);
+    } else if (seconds < 86400) {
+      const hours = Math.floor(seconds / 3600);
       return `${hours}h`;
+    } else {
+      const days = Math.floor(seconds / 86400);
+      return `${days}d`;
     }
   };
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
 
   const updateTokenPrice = async (tweet: Tweet): Promise<Tweet> => {
     if (!tweet.mintAddress || !pumpFunClient) return tweet;
@@ -539,7 +550,7 @@ export default function TwitterFeed() {
                         </a>
                       </div>
                       <span className="text-xs text-gray-400">
-                        {formatDistanceToNow(new Date(tweet.tweet_created_at), { addSuffix: true })}
+                        {formatTweetTime(tweet.tweet_created_at)}
                       </span>
                     </div>
                     <div className="mt-1">
@@ -571,7 +582,9 @@ export default function TwitterFeed() {
                       {tweet.tokenInfo.createdTimestamp && (
                         <div className="flex justify-between text-gray-400">
                           <span>Created:</span>
-                          <span className="text-yellow-400">{formatTimeSinceCreation(tweet.tokenInfo.createdTimestamp)}</span>
+                          <span className="text-yellow-400">
+                            {formatTweetTime(new Date(tweet.tokenInfo.createdTimestamp).toISOString())}
+                          </span>
                         </div>
                       )}
                     </div>
