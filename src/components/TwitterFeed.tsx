@@ -281,7 +281,7 @@ export default function TwitterFeed() {
   };
 
   const fetchTweets = async () => {
-    if (isPaused) return;
+    if (isPaused || loading) return; // Prevent concurrent fetches
     
     try {
       setLoading(true);
@@ -314,15 +314,16 @@ export default function TwitterFeed() {
         return;
       }
 
-      // Update last tweet ID to the newest tweet's ID
-      const newestTweet = data.tweets[0];
-      if (newestTweet && (!lastTweetId || newestTweet.id_str > lastTweetId)) {
-        setLastTweetId(newestTweet.id_str);
-      }
+      // Sort tweets by ID in descending order (newest first)
+      const sortedTweets = [...data.tweets].sort((a, b) => b.id_str.localeCompare(a.id_str));
+      
+      // Update last tweet ID before processing to prevent race conditions
+      const newestTweetId = sortedTweets[0].id_str;
+      setLastTweetId(newestTweetId);
       
       // Fetch token info for new tweets
       const enrichedNewTweets = await Promise.all(
-        data.tweets.map(async (tweet: Tweet) => {
+        sortedTweets.map(async (tweet: Tweet) => {
           const mintAddress = extractMintAddress(tweet);
           if (!mintAddress) return tweet;
           
@@ -346,11 +347,18 @@ export default function TwitterFeed() {
         })
       );
 
-      // Add new tweets to the existing list
+      // Add new tweets to the existing list, ensuring no duplicates
       setTweets(prevTweets => {
-        const allTweets = [...enrichedNewTweets, ...prevTweets]
-          .sort((a, b) => new Date(b.tweet_created_at).getTime() - new Date(a.tweet_created_at).getTime())
-          .slice(0, 100);
+        // Create a Set of existing tweet IDs for O(1) lookup
+        const existingIds = new Set(prevTweets.map(t => t.id_str));
+        
+        // Only add tweets that don't already exist
+        const uniqueNewTweets = enrichedNewTweets.filter(tweet => !existingIds.has(tweet.id_str));
+        
+        const allTweets = [...uniqueNewTweets, ...prevTweets]
+          .sort((a, b) => b.id_str.localeCompare(a.id_str)) // Sort by ID (most recent first)
+          .slice(0, 100); // Keep only the 100 most recent tweets
+          
         return allTweets;
       });
       
@@ -384,7 +392,7 @@ export default function TwitterFeed() {
     // Sort tweets by creation time before updating state
     setTweets(
       updatedTweets
-        .sort((a, b) => new Date(b.tweet_created_at).getTime() - new Date(a.tweet_created_at).getTime())
+        .sort((a, b) => b.id_str.localeCompare(a.id_str)) // Sort by ID (most recent first)
         .slice(0, 100)
     );
   };
