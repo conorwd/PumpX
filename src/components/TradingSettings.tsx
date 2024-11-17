@@ -3,6 +3,7 @@
 import { QRCodeSVG } from 'qrcode.react';
 import { useTradingContext } from '@/context/TradingContext';
 import { useBlacklist } from '@/context/BlacklistContext';
+import { useBuylist } from '@/context/BuylistContext';
 import { useState, useEffect } from 'react';
 import { Tooltip as ReactTooltip } from 'react-tooltip';
 import toast from 'react-hot-toast';
@@ -26,6 +27,7 @@ export default function TradingSettings() {
   } = useTradingContext();
 
   const { blacklistedUsers, addToBlacklist, removeFromBlacklist } = useBlacklist();
+  const { buylistedUsers, addToBuylist, removeFromBuylist } = useBuylist();
 
   const [mounted, setMounted] = useState(false);
   const [showKey, setShowKey] = useState(false);
@@ -35,6 +37,8 @@ export default function TradingSettings() {
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [newUsername, setNewUsername] = useState('');
+  const [newBlacklistUser, setNewBlacklistUser] = useState('');
+  const [newBuylistUser, setNewBuylistUser] = useState('');
 
   // Initialize Solana connection
   const connection = new Connection(process.env.NEXT_PUBLIC_HELIUS_RPC_URL || '');
@@ -183,7 +187,7 @@ export default function TradingSettings() {
 
         {/* Navigation Tabs */}
         <div className="flex space-x-1 border-b border-gray-800">
-          {['trading', 'holdings', 'wallet', 'blacklist'].map((tab) => (
+          {['trading', 'holdings', 'wallet', 'blacklist', 'buylist'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -439,6 +443,52 @@ export default function TradingSettings() {
                 ))}
                 {blacklistedUsers.length === 0 && (
                   <p className="text-sm text-gray-500">No blacklisted users</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'buylist' && (
+          <div className="space-y-4 rounded-lg border border-white/10 bg-white/5 p-4 max-h-[calc(100vh-16rem)] flex flex-col">
+            <h3 className="text-lg font-semibold">Buylist Management</h3>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newBuylistUser}
+                onChange={(e) => setNewBuylistUser(e.target.value)}
+                placeholder="Enter Twitter username"
+                className="flex-1 rounded-lg bg-black/20 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none ring-1 ring-white/10 transition-shadow focus:ring-yellow-500/50"
+              />
+              <button
+                onClick={() => {
+                  if (newBuylistUser.trim()) {
+                    addToBuylist(newBuylistUser.trim());
+                    setNewBuylistUser('');
+                  }
+                }}
+                className="rounded-lg bg-yellow-500/10 px-4 py-2 text-sm font-medium text-yellow-500 transition-colors hover:bg-yellow-500/20"
+              >
+                Add
+              </button>
+            </div>
+            
+            {/* Buylisted Users List */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <div className="space-y-2">
+                {buylistedUsers.map((username) => (
+                  <div key={username} className="flex items-center justify-between rounded-lg bg-black/20 px-3 py-2">
+                    <span className="text-sm text-gray-300">@{username}</span>
+                    <button
+                      onClick={() => removeFromBuylist(username)}
+                      className="text-xs text-red-400 hover:text-red-300"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                {buylistedUsers.length === 0 && (
+                  <p className="text-sm text-gray-500">No buylisted users</p>
                 )}
               </div>
             </div>

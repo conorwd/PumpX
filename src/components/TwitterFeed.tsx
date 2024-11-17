@@ -6,6 +6,7 @@ import { Connection, Keypair } from '@solana/web3.js';
 import { PumpFunClient } from '../pumpFunClient';
 import { useTradingContext } from '../context/TradingContext';
 import { useBlacklist } from '../context/BlacklistContext';
+import { useBuylist } from '../context/BuylistContext';
 import { TokenInfo } from '../types';
 import bs58 from 'bs58';
 import axios from 'axios';
@@ -52,7 +53,7 @@ export default function TwitterFeed() {
   } = useTradingContext();
 
   const { blacklistedUsers, addToBlacklist, isBlacklisted } = useBlacklist();
-
+  const { isBuylisted } = useBuylist();
   const [tweets, setTweets] = useState<Tweet[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +70,13 @@ export default function TwitterFeed() {
   const [pumpFunClient, setPumpFunClient] = useState<PumpFunClient | null>(null);
   const [lastTweetId, setLastTweetId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const [purchasedMints, setPurchasedMints] = useState<Set<string>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('pumpfun_purchased_mints');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    }
+    return new Set();
+  });
   
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const priceIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -99,6 +107,7 @@ export default function TwitterFeed() {
       
       if (signature) {
         setTxSignatures(prev => ({ ...prev, [tweet.id_str]: signature }));
+        addToPurchasedMints(tweet.mintAddress);
         
         // Update order status to success immediately
         if (pendingOrder) {
@@ -229,20 +238,57 @@ export default function TwitterFeed() {
   };
 
   const checkAndAutoBuy = useCallback((tweet: Tweet) => {
-    if (
+    // Check if we've already tried to autobuy this tweet
+    const autoBuyKey = `autobuy_${tweet.id_str}`;
+    const autoBuyAttempted = localStorage.getItem(autoBuyKey);
+    
+    const userIsBuylisted = isBuylisted(tweet.user.screen_name);
+    const meetsFollowerRequirement = tweet.user.followers_count >= minFollowers;
+    
+    const shouldBuy = 
       autoBuyEnabled &&
       tweet.mintAddress &&
       tweet.tokenInfo &&
-      tweet.user.followers_count >= minFollowers &&
       !txSignatures[tweet.id_str] &&
       !buyLoading[tweet.id_str] &&
       privateKey &&
       pumpFunClient &&
-      !isBlacklisted(tweet.user.screen_name)
-    ) {
+      !isBlacklisted(tweet.user.screen_name) &&
+      !autoBuyAttempted &&
+      !purchasedMints.has(tweet.mintAddress) &&
+      (userIsBuylisted || meetsFollowerRequirement); // Buy if user is buylisted OR meets follower requirement
+
+    if (shouldBuy) {
+      console.log('Auto-buying token from tweet:', {
+        tweetId: tweet.id_str,
+        user: tweet.user.screen_name,
+        followers: tweet.user.followers_count,
+        mintAddress: tweet.mintAddress,
+        tokenSymbol: tweet.tokenInfo?.symbol || 'Unknown',
+        isBuylisted: userIsBuylisted,
+        buyReason: userIsBuylisted ? 'User is buylisted' : 'Meets follower requirement'
+      });
       handleAutoBuy(tweet);
     }
-  }, [autoBuyEnabled, minFollowers, txSignatures, buyLoading, privateKey, pumpFunClient, isBlacklisted]);
+  }, [autoBuyEnabled, minFollowers, txSignatures, buyLoading, privateKey, pumpFunClient, isBlacklisted, purchasedMints, isBuylisted]);
+
+  useEffect(() => {
+    if (autoBuyEnabled && tweets.length > 0) {
+      tweets.forEach(tweet => {
+        checkAndAutoBuy(tweet);
+      });
+    }
+  }, [tweets, autoBuyEnabled, checkAndAutoBuy]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pumpfun_purchased_mints', JSON.stringify([...purchasedMints]));
+    }
+  }, [purchasedMints]);
+
+  const addToPurchasedMints = useCallback((mintAddress: string) => {
+    setPurchasedMints(prev => new Set([...prev, mintAddress]));
+  }, []);
 
   const handleRefreshRateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newRate = Number(e.target.value);
