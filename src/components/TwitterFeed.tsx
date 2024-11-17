@@ -39,7 +39,7 @@ export default function TwitterFeed() {
     return 10;
   });
   const [buyLoading, setBuyLoading] = useState<{ [key: string]: boolean }>({});
-  const [buyError, setBuyError] = useState<{ [key: string]: string }>({});
+  const [buyError, setBuyError] = useState<{ [key: string]: string | null }>({});
   const [txSignatures, setTxSignatures] = useState<{ [key: string]: string }>({});
   const [pumpFunClient, setPumpFunClient] = useState<PumpFunClient | null>(null);
   
