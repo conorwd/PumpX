@@ -24,6 +24,8 @@ export default function TradingSettings() {
     setBuyAmount,
     slippage,
     setSlippage,
+    followerCheckEnabled,
+    setFollowerCheckEnabled,
   } = useTradingContext();
 
   const { blacklistedUsers, addToBlacklist, removeFromBlacklist } = useBlacklist();
@@ -218,12 +220,32 @@ export default function TradingSettings() {
           <div className="space-y-4">
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-300">Minimum Followers</label>
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-300">Minimum Followers</label>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-gray-300">Check Followers</label>
+                    <div
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out cursor-pointer ${
+                        followerCheckEnabled ? 'bg-yellow-500' : 'bg-gray-600'
+                      }`}
+                      onClick={() => setFollowerCheckEnabled(!followerCheckEnabled)}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ease-in-out ${
+                          followerCheckEnabled ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </div>
+                  </div>
+                </div>
                 <input
                   type="number"
                   value={minFollowers}
-                  onChange={(e) => setMinFollowers(parseInt(e.target.value))}
-                  className="w-full px-3 py-2 bg-gray-800 rounded-lg border border-gray-700 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 text-white"
+                  onChange={(e) => setMinFollowers(Number(e.target.value))}
+                  className={`w-full rounded-lg bg-black/20 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none ring-1 ring-white/10 transition-opacity focus:ring-yellow-500/50 ${
+                    !followerCheckEnabled ? 'opacity-50' : ''
+                  }`}
+                  disabled={!followerCheckEnabled}
                   min="0"
                   step="100"
                 />

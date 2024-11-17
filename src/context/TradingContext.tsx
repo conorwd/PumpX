@@ -25,7 +25,9 @@ interface TradingContextType {
   autoBuyEnabled: boolean;
   setAutoBuyEnabled: (enabled: boolean) => void;
   minFollowers: number;
-  setMinFollowers: (followers: number) => void;
+  setMinFollowers: (count: number) => void;
+  followerCheckEnabled: boolean;
+  setFollowerCheckEnabled: (enabled: boolean) => void;
   updateInterval: number;
   setUpdateInterval: (interval: number) => void;
   orders: OrderStatus[];
@@ -44,6 +46,8 @@ const TradingContext = createContext<TradingContextType>({
   setAutoBuyEnabled: () => {},
   minFollowers: 1000,
   setMinFollowers: () => {},
+  followerCheckEnabled: true,
+  setFollowerCheckEnabled: () => {},
   updateInterval: 30,
   setUpdateInterval: () => {},
   orders: [],
@@ -77,6 +81,7 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
 
   const [autoBuyEnabled, setAutoBuyEnabled] = useState(false);
   const [minFollowers, setMinFollowers] = useState(1000);
+  const [followerCheckEnabled, setFollowerCheckEnabled] = useState(true);
   const [updateInterval, setUpdateInterval] = useState(30);
   const [orders, setOrders] = useState<OrderStatus[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -86,10 +91,12 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') {
       const storedAutoBuyEnabled = localStorage.getItem('autoBuyEnabled');
       const storedMinFollowers = Number(localStorage.getItem('minFollowers')) || 1000;
+      const storedFollowerCheckEnabled = localStorage.getItem('pumpfun_followerCheckEnabled');
       const storedUpdateInterval = Number(localStorage.getItem('updateInterval')) || 30;
 
       setAutoBuyEnabled(storedAutoBuyEnabled === 'true');
       setMinFollowers(storedMinFollowers);
+      if (storedFollowerCheckEnabled !== null) setFollowerCheckEnabled(storedFollowerCheckEnabled === 'true');
       setUpdateInterval(storedUpdateInterval);
       setIsInitialized(true);
     }
@@ -122,9 +129,10 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined' && isInitialized) {
       localStorage.setItem('autoBuyEnabled', autoBuyEnabled.toString());
       localStorage.setItem('minFollowers', minFollowers.toString());
+      localStorage.setItem('pumpfun_followerCheckEnabled', followerCheckEnabled.toString());
       localStorage.setItem('updateInterval', updateInterval.toString());
     }
-  }, [autoBuyEnabled, minFollowers, updateInterval, isInitialized]);
+  }, [autoBuyEnabled, minFollowers, followerCheckEnabled, updateInterval, isInitialized]);
 
   const addOrder = useCallback((orderData: Omit<OrderStatus, 'id' | 'timestamp'>) => {
     const newOrder: OrderStatus = {
@@ -155,6 +163,8 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
     setAutoBuyEnabled,
     minFollowers,
     setMinFollowers,
+    followerCheckEnabled,
+    setFollowerCheckEnabled,
     updateInterval,
     setUpdateInterval,
     orders,

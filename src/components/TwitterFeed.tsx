@@ -46,6 +46,7 @@ export default function TwitterFeed() {
     buyAmount,
     autoBuyEnabled,
     minFollowers,
+    followerCheckEnabled,
     slippage,
     addOrder,
     updateOrder,
@@ -243,8 +244,17 @@ export default function TwitterFeed() {
     const autoBuyAttempted = localStorage.getItem(autoBuyKey);
     
     const userIsBuylisted = isBuylisted(tweet.user.screen_name);
+    const userIsBlacklisted = isBlacklisted(tweet.user.screen_name);
     const meetsFollowerRequirement = tweet.user.followers_count >= minFollowers;
     
+    // Determine if we should buy based on user lists and settings
+    const shouldBuyBasedOnUser = 
+      // Always buy from buylisted users (unless blacklisted)
+      (userIsBuylisted && !userIsBlacklisted) ||
+      // For non-buylisted users, only buy if follower check is enabled AND they meet the requirement
+      (!userIsBuylisted && !userIsBlacklisted && followerCheckEnabled && meetsFollowerRequirement);
+
+    // Check all other conditions
     const shouldBuy = 
       autoBuyEnabled &&
       tweet.mintAddress &&
@@ -253,12 +263,16 @@ export default function TwitterFeed() {
       !buyLoading[tweet.id_str] &&
       privateKey &&
       pumpFunClient &&
-      !isBlacklisted(tweet.user.screen_name) &&
-      !autoBuyAttempted &&
       !purchasedMints.has(tweet.mintAddress) &&
-      (userIsBuylisted || meetsFollowerRequirement); // Buy if user is buylisted OR meets follower requirement
+      !autoBuyAttempted &&
+      shouldBuyBasedOnUser;
 
     if (shouldBuy) {
+      // Determine the reason for buying
+      const buyReason = userIsBuylisted 
+        ? 'User is buylisted' 
+        : 'Meets follower requirement';
+
       console.log('Auto-buying token from tweet:', {
         tweetId: tweet.id_str,
         user: tweet.user.screen_name,
@@ -266,11 +280,13 @@ export default function TwitterFeed() {
         mintAddress: tweet.mintAddress,
         tokenSymbol: tweet.tokenInfo?.symbol || 'Unknown',
         isBuylisted: userIsBuylisted,
-        buyReason: userIsBuylisted ? 'User is buylisted' : 'Meets follower requirement'
+        followerCheckEnabled,
+        minFollowers: followerCheckEnabled ? minFollowers : 'disabled',
+        buyReason
       });
       handleAutoBuy(tweet);
     }
-  }, [autoBuyEnabled, minFollowers, txSignatures, buyLoading, privateKey, pumpFunClient, isBlacklisted, purchasedMints, isBuylisted]);
+  }, [autoBuyEnabled, minFollowers, followerCheckEnabled, txSignatures, buyLoading, privateKey, pumpFunClient, isBlacklisted, purchasedMints, isBuylisted]);
 
   useEffect(() => {
     if (autoBuyEnabled && tweets.length > 0) {
