@@ -288,14 +288,14 @@ export default function TwitterFeed() {
 
       const data = await response.json();
       
-      if (!Array.isArray(data)) {
+      if (!data || !data.tweets || !Array.isArray(data.tweets)) {
         console.error('Unexpected API response:', data);
         throw new Error('Invalid API response format');
       }
       
       // Process only new tweets
       const existingTweetIds = new Set(tweets.map(t => t.id_str));
-      const brandNewTweets = data.filter((tweet: Tweet) => !existingTweetIds.has(tweet.id_str));
+      const brandNewTweets = data.tweets.filter((tweet: Tweet) => !existingTweetIds.has(tweet.id_str));
       
       // Fetch token info only for new tweets
       const enrichedNewTweets = await Promise.all(
@@ -402,7 +402,7 @@ export default function TwitterFeed() {
         
         // Process and enrich tweets
         const enrichedTweets = await Promise.all(
-          data.map(async (tweet: Tweet) => {
+          data.tweets.map(async (tweet: Tweet) => {
             const mintAddress = extractMintAddress(tweet);
             if (!mintAddress) return tweet;
             
