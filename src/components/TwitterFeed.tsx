@@ -358,7 +358,10 @@ export default function TwitterFeed() {
         return updateTokenPrice(tweet);
       })
     );
-    setTweets(updatedTweets);
+    // Sort tweets by creation time before updating state
+    setTweets(updatedTweets.sort((a, b) => 
+      new Date(b.tweet_created_at).getTime() - new Date(a.tweet_created_at).getTime()
+    ));
   };
 
   useEffect(() => {
