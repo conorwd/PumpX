@@ -1,28 +1,31 @@
 'use client';
 
-import { useTradingContext } from '../context/TradingContext';
-import PurchasedTokens from './PurchasedTokens';
-import OrderStatus from './OrderStatus';
+import { QRCodeSVG } from 'qrcode.react';
+import { useTradingContext } from '@/context/TradingContext';
+import { useBlacklist } from '@/context/BlacklistContext';
 import { useState, useEffect } from 'react';
 import { Tooltip as ReactTooltip } from 'react-tooltip';
 import toast from 'react-hot-toast';
 import { Keypair, Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import bs58 from 'bs58';
-import { QRCodeSVG } from 'qrcode.react';
+import PurchasedTokens from './PurchasedTokens';
+import OrderStatus from './OrderStatus';
 
 export default function TradingSettings() {
   const {
     privateKey,
     setPrivateKey,
-    buyAmount,
-    setBuyAmount,
-    slippage,
-    setSlippage,
     minFollowers,
     setMinFollowers,
     autoBuyEnabled,
     setAutoBuyEnabled,
+    buyAmount,
+    setBuyAmount,
+    slippage,
+    setSlippage,
   } = useTradingContext();
+
+  const { blacklistedUsers, addToBlacklist, removeFromBlacklist } = useBlacklist();
 
   const [mounted, setMounted] = useState(false);
   const [showKey, setShowKey] = useState(false);
@@ -31,6 +34,7 @@ export default function TradingSettings() {
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
 
   // Initialize Solana connection
   const connection = new Connection(process.env.NEXT_PUBLIC_HELIUS_RPC_URL || '');
@@ -111,18 +115,6 @@ export default function TradingSettings() {
     }
   };
 
-  const handleBuyAmountChange = (value: number) => {
-    if (value >= 0) {
-      setBuyAmount(value);
-    }
-  };
-
-  const handleSlippageChange = (value: number) => {
-    if (value >= 0.1 && value <= 100) {
-      setSlippage(value);
-    }
-  };
-
   const handleImportClick = () => {
     if (!isImporting) {
       // First click - clear current wallet and enter import mode
@@ -143,6 +135,18 @@ export default function TradingSettings() {
       } else {
         setError('Please enter a private key');
       }
+    }
+  };
+
+  const handleBuyAmountChange = (value: number) => {
+    if (value >= 0) {
+      setBuyAmount(value);
+    }
+  };
+
+  const handleSlippageChange = (value: number) => {
+    if (value >= 0.1 && value <= 100) {
+      setSlippage(value);
     }
   };
 
@@ -179,7 +183,7 @@ export default function TradingSettings() {
 
         {/* Navigation Tabs */}
         <div className="flex space-x-1 border-b border-gray-800">
-          {['trading', 'holdings', 'wallet', 'notifications'].map((tab) => (
+          {['trading', 'holdings', 'wallet', 'blacklist'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -208,52 +212,78 @@ export default function TradingSettings() {
 
         {activeTab === 'trading' && (
           <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">Buy Amount (SOL)</label>
-              <div className="flex gap-2 mb-2">
-                {[0.01, 0.1, 1, 10].map((value) => (
-                  <button
-                    key={value}
-                    onClick={() => handleBuyAmountChange(value)}
-                    className="px-3 py-1 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg border border-gray-700 transition-colors"
-                  >
-                    {value} SOL
-                  </button>
-                ))}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-300">Minimum Followers</label>
+                <input
+                  type="number"
+                  value={minFollowers}
+                  onChange={(e) => setMinFollowers(parseInt(e.target.value))}
+                  className="w-full px-3 py-2 bg-gray-800 rounded-lg border border-gray-700 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 text-white"
+                  min="0"
+                  step="100"
+                />
               </div>
-              <input
-                type="number"
-                value={buyAmount}
-                onChange={(e) => handleBuyAmountChange(parseFloat(e.target.value))}
-                className="w-full px-3 py-2 bg-gray-800 rounded-lg border border-gray-700 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 text-white"
-                min="0"
-                step="0.1"
-              />
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-300">Buy Amount (SOL)</label>
+                <div className="flex gap-2 mb-2">
+                  {[0.01, 0.1, 1, 10].map((value) => (
+                    <button
+                      key={value}
+                      onClick={() => handleBuyAmountChange(value)}
+                      className={`px-3 py-1 text-sm rounded-lg border transition-colors ${
+                        buyAmount === value
+                          ? 'bg-yellow-500/20 text-yellow-500 border-yellow-500/20'
+                          : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-700'
+                      }`}
+                    >
+                      {value} SOL
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="number"
+                  value={buyAmount}
+                  onChange={(e) => handleBuyAmountChange(parseFloat(e.target.value))}
+                  className="w-full px-3 py-2 bg-gray-800 rounded-lg border border-gray-700 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 text-white"
+                  min="0"
+                  step="0.1"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-300">Slippage (%)</label>
+                <div className="flex gap-2 mb-2">
+                  {[1, 2.5, 10, 25].map((value) => (
+                    <button
+                      key={value}
+                      onClick={() => handleSlippageChange(value)}
+                      className={`px-3 py-1 text-sm rounded-lg border transition-colors ${
+                        slippage === value
+                          ? 'bg-yellow-500/20 text-yellow-500 border-yellow-500/20'
+                          : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-700'
+                      }`}
+                    >
+                      {value}%
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="number"
+                  value={slippage}
+                  onChange={(e) => handleSlippageChange(parseFloat(e.target.value))}
+                  className="w-full px-3 py-2 bg-gray-800 rounded-lg border border-gray-700 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 text-white"
+                  min="0.1"
+                  max="100"
+                  step="0.1"
+                />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">Slippage (%)</label>
-              <input
-                type="number"
-                value={slippage}
-                onChange={(e) => handleSlippageChange(parseFloat(e.target.value))}
-                className="w-full px-3 py-2 bg-gray-800 rounded-lg border border-gray-700 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 text-white"
-                min="0.1"
-                max="100"
-                step="0.1"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">Minimum Followers</label>
-              <input
-                type="number"
-                value={minFollowers}
-                onChange={(e) => setMinFollowers(parseInt(e.target.value))}
-                className="w-full px-3 py-2 bg-gray-800 rounded-lg border border-gray-700 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 text-white"
-                min="0"
-                step="100"
-              />
+            <div className="border-t border-gray-800 pt-4">
+              <h3 className="text-sm font-medium text-gray-300 mb-3">Recent Orders</h3>
+              <OrderStatus />
             </div>
           </div>
         )}
@@ -369,8 +399,50 @@ export default function TradingSettings() {
           <PurchasedTokens />
         )}
 
-        {activeTab === 'notifications' && (
-          <OrderStatus />
+        {activeTab === 'blacklist' && (
+          <div className="space-y-4 rounded-lg border border-white/10 bg-white/5 p-4 max-h-[calc(100vh-16rem)] flex flex-col">
+            <h3 className="text-lg font-semibold">Blacklist Management</h3>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
+                placeholder="Enter Twitter username"
+                className="flex-1 rounded-lg bg-black/20 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none ring-1 ring-white/10 transition-shadow focus:ring-yellow-500/50"
+              />
+              <button
+                onClick={() => {
+                  if (newUsername.trim()) {
+                    addToBlacklist(newUsername.trim());
+                    setNewUsername('');
+                  }
+                }}
+                className="rounded-lg bg-yellow-500/10 px-4 py-2 text-sm font-medium text-yellow-500 transition-colors hover:bg-yellow-500/20"
+              >
+                Add
+              </button>
+            </div>
+            
+            {/* Blacklisted Users List */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <div className="space-y-2">
+                {blacklistedUsers.map((username) => (
+                  <div key={username} className="flex items-center justify-between rounded-lg bg-black/20 px-3 py-2">
+                    <span className="text-sm text-gray-300">@{username}</span>
+                    <button
+                      onClick={() => removeFromBlacklist(username)}
+                      className="text-xs text-red-400 hover:text-red-300"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                {blacklistedUsers.length === 0 && (
+                  <p className="text-sm text-gray-500">No blacklisted users</p>
+                )}
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

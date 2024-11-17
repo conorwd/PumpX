@@ -5,10 +5,12 @@ import { TwitterService } from '../services/twitterService';
 import { Connection, Keypair } from '@solana/web3.js';
 import { PumpFunClient } from '../pumpFunClient';
 import { useTradingContext } from '../context/TradingContext';
+import { useBlacklist } from '../context/BlacklistContext';
 import { TokenInfo } from '../types';
 import bs58 from 'bs58';
 import axios from 'axios';
 import { formatDistanceToNow } from 'date-fns';
+import { OrderStatus } from '../context/TradingContext';
 
 interface Tweet {
   id_str: string;
@@ -46,7 +48,10 @@ export default function TwitterFeed() {
     slippage,
     addOrder,
     updateOrder,
+    orders,
   } = useTradingContext();
+
+  const { blacklistedUsers, addToBlacklist, isBlacklisted } = useBlacklist();
 
   const [tweets, setTweets] = useState<Tweet[]>([]);
   const [loading, setLoading] = useState(false);
@@ -60,7 +65,6 @@ export default function TwitterFeed() {
     return 10;
   });
   const [buyLoading, setBuyLoading] = useState<{ [key: string]: boolean }>({});
-  const [buyError, setBuyError] = useState<{ [key: string]: string | null }>({});
   const [txSignatures, setTxSignatures] = useState<{ [key: string]: string }>({});
   const [pumpFunClient, setPumpFunClient] = useState<PumpFunClient | null>(null);
   const [lastTweetId, setLastTweetId] = useState<string | null>(null);
@@ -73,63 +77,154 @@ export default function TwitterFeed() {
   const handleBuy = async (tweet: Tweet) => {
     if (!pumpFunClient || !tweet.mintAddress) return;
     
+    let pendingOrder: OrderStatus | undefined;
+    
     try {
       setBuyLoading(prev => ({ ...prev, [tweet.id_str]: true }));
-      setBuyError(prev => ({ ...prev, [tweet.id_str]: null }));
-      
-      // Add pending order first
-      addOrder({
+
+      // Create initial order with pending status
+      const newOrder: Omit<OrderStatus, 'id' | 'timestamp'> = {
         tokenSymbol: tweet.tokenInfo?.symbol || '???',
         tokenName: tweet.tokenInfo?.name || 'Unknown Token',
-        type: 'buy',
+        type: 'buy' as const,
         amount: buyAmount,
-        status: 'pending',
-        mintAddress: tweet.mintAddress,
-      });
+        status: 'pending' as const,
+        mintAddress: tweet.mintAddress
+      };
+      
+      // Add the order and get its ID
+      pendingOrder = addOrder(newOrder);
 
       const signature = await pumpFunClient.buy(tweet.mintAddress, buyAmount, slippage);
       
       if (signature) {
         setTxSignatures(prev => ({ ...prev, [tweet.id_str]: signature }));
         
-        // Update order status to success
-        const orders = JSON.parse(localStorage.getItem('orders') || '[]');
-        const pendingOrder = orders.find(
-          (order: any) => 
-            order.mintAddress === tweet.mintAddress && 
-            order.status === 'pending'
-        );
-        
+        // Update order status to success immediately
         if (pendingOrder) {
           updateOrder(pendingOrder.id, {
             status: 'success',
             signature
           });
+
+          // Remove successful order after 15 seconds
+          setTimeout(() => {
+            if (pendingOrder) {
+              updateOrder(pendingOrder.id, { status: 'success', error: 'removed' });
+            }
+          }, 15000);
         }
       } else {
         throw new Error('Transaction failed');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Buy error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Transaction failed';
-      setBuyError(prev => ({ ...prev, [tweet.id_str]: errorMessage }));
+      let errorMessage = 'Transaction failed';
       
-      // Update order status to error
-      const orders = JSON.parse(localStorage.getItem('orders') || '[]');
-      const pendingOrder = orders.find(
-        (order: any) => 
-          order.mintAddress === tweet.mintAddress && 
-          order.status === 'pending'
-      );
-      
+      // Parse the error message from the RPC response
+      if (error.response?.data?.result?.value?.err) {
+        errorMessage = error.response.data.result.value.err;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      // Update the pending order with error if it exists
       if (pendingOrder) {
         updateOrder(pendingOrder.id, {
           status: 'error',
           error: errorMessage
         });
+
+        // Remove failed order after 15 seconds
+        setTimeout(() => {
+          if (pendingOrder) {
+            updateOrder(pendingOrder.id, { status: 'error', error: 'removed' });
+          }
+        }, 15000);
       }
     } finally {
       setBuyLoading(prev => ({ ...prev, [tweet.id_str]: false }));
+    }
+  };
+
+  const handleAutoBuy = async (tweet: Tweet) => {
+    if (!pumpFunClient || !tweet.mintAddress) return;
+    
+    const autoBuyKey = `autobuy_${tweet.id_str}`;
+    
+    // Check if we've already tried to autobuy this tweet
+    const autoBuyAttempted = localStorage.getItem(autoBuyKey);
+    if (autoBuyAttempted) return;
+    
+    let pendingOrder: OrderStatus | undefined;
+    
+    try {
+      setBuyLoading(prev => ({ ...prev, [tweet.id_str]: true }));
+
+      // Create initial order with pending status
+      const newOrder: Omit<OrderStatus, 'id' | 'timestamp'> = {
+        tokenSymbol: tweet.tokenInfo?.symbol || '???',
+        tokenName: tweet.tokenInfo?.name || 'Unknown Token',
+        type: 'buy' as const,
+        amount: buyAmount,
+        status: 'pending' as const,
+        mintAddress: tweet.mintAddress
+      };
+      
+      // Add the order and get its ID
+      pendingOrder = addOrder(newOrder);
+
+      const signature = await pumpFunClient.buy(tweet.mintAddress, buyAmount, slippage);
+      
+      if (signature) {
+        setTxSignatures(prev => ({ ...prev, [tweet.id_str]: signature }));
+        
+        // Update order status to success immediately
+        if (pendingOrder) {
+          updateOrder(pendingOrder.id, {
+            status: 'success',
+            signature
+          });
+
+          // Remove successful order after 15 seconds
+          setTimeout(() => {
+            if (pendingOrder) {
+              updateOrder(pendingOrder.id, { status: 'success', error: 'removed' });
+            }
+          }, 15000);
+        }
+      } else {
+        throw new Error('Transaction failed');
+      }
+    } catch (error: any) {
+      console.error('Autobuy error:', error);
+      let errorMessage = 'Transaction failed';
+      
+      // Parse the error message from the RPC response
+      if (error.response?.data?.result?.value?.err) {
+        errorMessage = error.response.data.result.value.err;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      // Update the pending order with error if it exists
+      if (pendingOrder) {
+        updateOrder(pendingOrder.id, {
+          status: 'error',
+          error: errorMessage
+        });
+
+        // Remove failed order after 15 seconds
+        setTimeout(() => {
+          if (pendingOrder) {
+            updateOrder(pendingOrder.id, { status: 'error', error: 'removed' });
+          }
+        }, 15000);
+      }
+    } finally {
+      setBuyLoading(prev => ({ ...prev, [tweet.id_str]: false }));
+      // Mark this tweet as attempted for autobuy
+      localStorage.setItem(autoBuyKey, 'true');
     }
   };
 
@@ -141,13 +236,13 @@ export default function TwitterFeed() {
       tweet.user.followers_count >= minFollowers &&
       !txSignatures[tweet.id_str] &&
       !buyLoading[tweet.id_str] &&
-      !buyError[tweet.id_str] &&
       privateKey &&
-      pumpFunClient
+      pumpFunClient &&
+      !isBlacklisted(tweet.user.screen_name)
     ) {
-      handleBuy(tweet);
+      handleAutoBuy(tweet);
     }
-  }, [autoBuyEnabled, minFollowers, txSignatures, buyLoading, buyError, privateKey, pumpFunClient]);
+  }, [autoBuyEnabled, minFollowers, txSignatures, buyLoading, privateKey, pumpFunClient, isBlacklisted]);
 
   const handleRefreshRateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newRate = Number(e.target.value);
@@ -218,6 +313,15 @@ export default function TwitterFeed() {
     }
   };
 
+  const formatCreationTime = (timestamp: number) => {
+    // Handle both milliseconds and seconds timestamps
+    const date = new Date(timestamp > 1e12 ? timestamp : timestamp * 1000);
+    if (isNaN(date.getTime()) || date.getFullYear() < 2020) {
+      return 'Recently';
+    }
+    return formatDistanceToNow(date, { addSuffix: true });
+  };
+
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(Date.now());
@@ -263,13 +367,17 @@ export default function TwitterFeed() {
 
       if (response.status === 200) {
         const data = await response.json();
+        // Use current timestamp if the API doesn't provide one or if it's invalid
+        const now = Math.floor(Date.now() / 1000);
+        const createdTimestamp = data.created_timestamp && data.created_timestamp > 1577836800 ? data.created_timestamp : now;
+        
         return {
           symbol: data.symbol || '???',
           name: data.name || 'Unknown Token',
           imageUrl: data.image_uri || '',
           price: data.market_cap / (data.total_supply / 1e9), // Calculate price from market cap
           marketCap: data.usd_market_cap,
-          createdTimestamp: data.created_timestamp
+          createdTimestamp: createdTimestamp
         };
       }
       console.error('Error fetching token info:', response.status);
@@ -362,8 +470,8 @@ export default function TwitterFeed() {
         return allTweets;
       });
       
-    } catch (error) {
-      console.error('Error fetching tweets:', error);
+    } catch (err) {
+      console.error('Error fetching tweets:', err);
       setError('Failed to fetch tweets. Please try again later.');
     } finally {
       setLoading(false);
@@ -491,11 +599,9 @@ export default function TwitterFeed() {
     return `https://twitter.com/${tweet.user.screen_name}/status/${tweet.id_str}`;
   };
 
-  const getPumpFunUrl = (tweet: Tweet): string | null => {
-    const pumpFunUrl = tweet.entities.urls.find(url => 
-      url.expanded_url.includes('pump.fun/coin/')
-    );
-    return pumpFunUrl ? pumpFunUrl.expanded_url : null;
+  const getPumpFunUrl = (tweet: Tweet): string => {
+    if (!tweet.mintAddress) return 'https://pump.fun';
+    return `https://pump.fun/coin/${tweet.mintAddress}`;
   };
 
   return (
@@ -543,7 +649,9 @@ export default function TwitterFeed() {
           </div>
         ) : (
           <div className="space-y-4 p-4">
-            {tweets.map((tweet) => (
+            {tweets
+              .filter(tweet => !isBlacklisted(tweet.user.screen_name))
+              .map((tweet) => (
               <div key={`${tweet.id_str}-${tweet.user.screen_name}`} className="bg-gray-900 rounded-lg shadow-lg border border-gray-700 p-3 hover:border-gray-600 transition-colors">
                 <div className="flex items-start space-x-3">
                   <img
@@ -602,54 +710,48 @@ export default function TwitterFeed() {
                         <div className="flex justify-between text-gray-400">
                           <span>Created:</span>
                           <span className="text-yellow-400">
-                            {formatTweetTime(new Date(tweet.tokenInfo.createdTimestamp).toISOString())}
+                            {formatCreationTime(tweet.tokenInfo.createdTimestamp)}
                           </span>
                         </div>
                       )}
                     </div>
-                    
-                    {tweet.mintAddress && (
-                      <div className="flex flex-col items-end ml-3 min-w-[100px]">
-                        <div className="flex items-center space-x-2">
-                          {txSignatures[tweet.id_str] ? (
-                            <a
-                              href={`https://solscan.io/tx/${txSignatures[tweet.id_str]}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-green-400 hover:text-green-300"
-                            >
-                              View Transaction
-                            </a>
-                          ) : buyError[tweet.id_str] ? (
-                            <span className="text-xs text-red-400">{buyError[tweet.id_str]}</span>
-                          ) : (
-                            <button
-                              onClick={() => handleBuy(tweet)}
-                              disabled={buyLoading[tweet.id_str] || !privateKey || !pumpFunClient}
-                              className={`px-3 py-1 text-xs font-medium rounded-md ${
-                                buyLoading[tweet.id_str]
-                                  ? 'bg-yellow-500/50 cursor-not-allowed'
-                                  : privateKey && pumpFunClient
-                                  ? 'bg-yellow-500 hover:bg-yellow-400 text-gray-900'
-                                  : 'bg-gray-700 cursor-not-allowed'
-                              }`}
-                            >
-                              {buyLoading[tweet.id_str] ? 'Buying...' : 'Buy'}
-                            </button>
-                          )}
-                        </div>
-                        {getPumpFunUrl(tweet) && (
-                          <a
-                            href={getPumpFunUrl(tweet)!}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-blue-400 hover:text-blue-300 mt-1"
-                          >
-                            View on Pump.fun
-                          </a>
-                        )}
-                      </div>
-                    )}
+                    <div className="flex flex-col space-y-2 ml-2">
+                      <a
+                        href={getPumpFunUrl(tweet)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1 text-xs bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 rounded-lg border border-yellow-500/20 transition-colors whitespace-nowrap"
+                      >
+                        View on Pump.fun
+                      </a>
+                      <button
+                        onClick={() => addToBlacklist(tweet.user.screen_name)}
+                        className="px-3 py-1 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg border border-red-500/20 transition-colors whitespace-nowrap"
+                      >
+                        Blacklist User
+                      </button>
+                      {privateKey && (
+                        <button
+                          onClick={() => handleBuy(tweet)}
+                          disabled={buyLoading[tweet.id_str] || !!txSignatures[tweet.id_str]}
+                          className={`px-3 py-1 text-xs rounded-lg font-medium transition-colors whitespace-nowrap ${
+                            buyLoading[tweet.id_str]
+                              ? 'bg-gray-500/10 text-gray-400 cursor-not-allowed border border-gray-500/20'
+                              : txSignatures[tweet.id_str]
+                              ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+                              : privateKey
+                              ? 'bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 border border-yellow-500/20'
+                              : 'bg-gray-500/10 text-gray-400 cursor-not-allowed border border-gray-500/20'
+                          }`}
+                        >
+                          {buyLoading[tweet.id_str]
+                            ? 'Buying...'
+                            : txSignatures[tweet.id_str]
+                            ? 'Bought'
+                            : 'Buy'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

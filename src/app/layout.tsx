@@ -1,4 +1,5 @@
 import { TradingProvider } from '../context/TradingContext';
+import { BlacklistProvider } from '../context/BlacklistContext';
 import '../styles/globals.css';
 import { Inter } from 'next/font/google';
 import { Toaster } from 'react-hot-toast';
@@ -19,8 +20,10 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <TradingProvider>
-          {children}
-          <Toaster position="bottom-right" />
+          <BlacklistProvider>
+            {children}
+            <Toaster position="bottom-right" />
+          </BlacklistProvider>
         </TradingProvider>
       </body>
     </html>

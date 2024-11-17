@@ -82,7 +82,7 @@ export class TwitterService {
   }
 
   private buildQuery(): string {
-    const baseQuery = 'pump.fun/ -filter:retweets';
+    const baseQuery = 'pump.fun/coin/ -filter:retweets';
     
     if (this.isFirstRequest) {
       // First request: get tweets from last 10 minutes

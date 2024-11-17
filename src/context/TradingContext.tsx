@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
-interface OrderStatus {
+export interface OrderStatus {
   id: string;
   tokenSymbol: string;
   tokenName: string;
@@ -29,7 +29,7 @@ interface TradingContextType {
   updateInterval: number;
   setUpdateInterval: (interval: number) => void;
   orders: OrderStatus[];
-  addOrder: (order: Omit<OrderStatus, 'id' | 'timestamp'>) => void;
+  addOrder: (order: Omit<OrderStatus, 'id' | 'timestamp'>) => OrderStatus;
   updateOrder: (id: string, updates: Partial<OrderStatus>) => void;
 }
 
@@ -47,14 +47,34 @@ const TradingContext = createContext<TradingContextType>({
   updateInterval: 30,
   setUpdateInterval: () => {},
   orders: [],
-  addOrder: () => {},
+  addOrder: () => ({} as OrderStatus),
   updateOrder: () => {},
 });
 
 export function TradingProvider({ children }: { children: React.ReactNode }) {
-  const [privateKey, setPrivateKey] = useState<string | null>(null);
-  const [buyAmount, setBuyAmount] = useState(0.1);
-  const [slippage, setSlippage] = useState(25);
+  const [privateKey, setPrivateKey] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('pumpfun_privateKey') || null;
+    }
+    return null;
+  });
+
+  const [buyAmount, setBuyAmount] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const savedAmount = localStorage.getItem('pumpfun_buyAmount');
+      return savedAmount ? parseFloat(savedAmount) : 0.1;
+    }
+    return 0.1;
+  });
+
+  const [slippage, setSlippage] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const savedSlippage = localStorage.getItem('pumpfun_slippage');
+      return savedSlippage ? parseFloat(savedSlippage) : 1;
+    }
+    return 1;
+  });
+
   const [autoBuyEnabled, setAutoBuyEnabled] = useState(false);
   const [minFollowers, setMinFollowers] = useState(1000);
   const [updateInterval, setUpdateInterval] = useState(30);
@@ -64,18 +84,47 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
   // Load initial values from localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const storedPrivateKey = localStorage.getItem('privateKey');
-      const storedBuyAmount = Number(localStorage.getItem('buyAmount')) || 0.1;
-      const storedSlippage = Number(localStorage.getItem('slippage')) || 25;
+      const storedAutoBuyEnabled = localStorage.getItem('autoBuyEnabled');
+      const storedMinFollowers = Number(localStorage.getItem('minFollowers')) || 1000;
       const storedUpdateInterval = Number(localStorage.getItem('updateInterval')) || 30;
 
-      setPrivateKey(storedPrivateKey);
-      setBuyAmount(storedBuyAmount);
-      setSlippage(storedSlippage);
+      setAutoBuyEnabled(storedAutoBuyEnabled === 'true');
+      setMinFollowers(storedMinFollowers);
       setUpdateInterval(storedUpdateInterval);
       setIsInitialized(true);
     }
   }, []);
+
+  // Cache privateKey changes
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (privateKey) {
+      localStorage.setItem('pumpfun_privateKey', privateKey);
+    } else {
+      localStorage.removeItem('pumpfun_privateKey');
+    }
+  }, [privateKey]);
+
+  // Cache buyAmount changes
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('pumpfun_buyAmount', buyAmount.toString());
+  }, [buyAmount]);
+
+  // Cache slippage changes
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('pumpfun_slippage', slippage.toString());
+  }, [slippage]);
+
+  // Save values to localStorage when they change
+  useEffect(() => {
+    if (typeof window !== 'undefined' && isInitialized) {
+      localStorage.setItem('autoBuyEnabled', autoBuyEnabled.toString());
+      localStorage.setItem('minFollowers', minFollowers.toString());
+      localStorage.setItem('updateInterval', updateInterval.toString());
+    }
+  }, [autoBuyEnabled, minFollowers, updateInterval, isInitialized]);
 
   const addOrder = useCallback((orderData: Omit<OrderStatus, 'id' | 'timestamp'>) => {
     const newOrder: OrderStatus = {
@@ -84,6 +133,7 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
       timestamp: Date.now(),
     };
     setOrders(prev => [newOrder, ...prev].slice(0, 50)); // Keep last 50 orders
+    return newOrder;
   }, []);
 
   const updateOrder = useCallback((id: string, updates: Partial<OrderStatus>) => {
@@ -93,16 +143,6 @@ export function TradingProvider({ children }: { children: React.ReactNode }) {
       )
     );
   }, []);
-
-  // Save values to localStorage when they change
-  useEffect(() => {
-    if (typeof window !== 'undefined' && isInitialized) {
-      localStorage.setItem('privateKey', privateKey || '');
-      localStorage.setItem('buyAmount', buyAmount.toString());
-      localStorage.setItem('slippage', slippage.toString());
-      localStorage.setItem('updateInterval', updateInterval.toString());
-    }
-  }, [privateKey, buyAmount, slippage, updateInterval, isInitialized]);
 
   const value = {
     privateKey,
