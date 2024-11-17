@@ -5,10 +5,31 @@ import { TwitterService } from '../services/twitterService';
 import { Connection, Keypair } from '@solana/web3.js';
 import { PumpFunClient } from '../pumpFunClient';
 import { useTradingContext } from '../context/TradingContext';
-import { Tweet, TokenInfo } from '../types';
+import { TokenInfo } from '../types';
 import bs58 from 'bs58';
 import axios from 'axios';
 import { formatDistanceToNow } from 'date-fns';
+
+interface Tweet {
+  id_str: string;
+  full_text: string;
+  tweet_created_at: string;
+  user: {
+    name: string;
+    screen_name: string;
+    profile_image_url_https: string;
+    followers_count: number;
+  };
+  entities: {
+    urls: {
+      expanded_url: string;
+    }[];
+  };
+  tokenInfo?: TokenInfo;
+  mintAddress?: string;
+  pricePerToken?: number;
+  lastPriceCheck?: number;
+}
 
 declare global {
   interface Window {
@@ -249,36 +270,45 @@ export default function TwitterFeed() {
     try {
       setLoading(true);
       setError(null);
-      const newTweets = await twitterService.searchTweets();
+      const query = encodeURIComponent('pump.fun/ -filter:retweets');
+      const since_time = Math.floor(Date.now() / 1000);
+      const type = 'Latest';
+      
+      const response = await fetch(`/api/twitter-proxy?query=${query}+since_time:${since_time}&type=${type}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch tweets: ${response.status}`);
+      }
+
+      const data = await response.json();
       
       // Process only new tweets
       const existingTweetIds = new Set(tweets.map(t => t.id_str));
-      const brandNewTweets = newTweets.filter(tweet => !existingTweetIds.has(tweet.id_str));
+      const brandNewTweets = data.filter((tweet: Tweet) => !existingTweetIds.has(tweet.id_str));
       
       // Fetch token info only for new tweets
       const enrichedNewTweets = await Promise.all(
-        brandNewTweets.map(async (tweet) => {
+        brandNewTweets.map(async (tweet: Tweet) => {
           const mintAddress = extractMintAddress(tweet);
-          if (mintAddress) {
-            try {
-              const tokenInfo = await fetchTokenInfo(mintAddress);
-              const enrichedTweet: Tweet = {
-                ...tweet,
-                tokenInfo,
-                mintAddress,
-                lastPriceCheck: Date.now()
-              };
-              
-              // Check for autobuy on new tweets
-              checkAndAutoBuy(enrichedTweet);
-              
-              return enrichedTweet;
-            } catch (error) {
-              console.error('Error fetching token info:', error);
-              return { ...tweet, mintAddress } as Tweet;
-            }
+          if (!mintAddress) return tweet;
+          
+          try {
+            const tokenInfo = await fetchTokenInfo(mintAddress);
+            const enrichedTweet: Tweet = {
+              ...tweet,
+              tokenInfo,
+              mintAddress,
+              lastPriceCheck: Date.now()
+            };
+            
+            // Check for autobuy on new tweets
+            checkAndAutoBuy(enrichedTweet);
+            
+            return enrichedTweet;
+          } catch (error) {
+            console.error('Error fetching token info:', error);
+            return { ...tweet, mintAddress } as Tweet;
           }
-          return tweet;
         })
       );
 
@@ -340,6 +370,51 @@ export default function TwitterFeed() {
 
     initPumpFunClient();
   }, [privateKey]);
+
+  useEffect(() => {
+    const fetchInitialTweets = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const query = encodeURIComponent('pump.fun/ -filter:retweets');
+        const since_time = Math.floor(Date.now() / 1000);
+        const type = 'Latest';
+        
+        const response = await fetch(`/api/twitter-proxy?query=${query}+since_time:${since_time}&type=${type}`);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch tweets: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        // Process and enrich tweets
+        const enrichedTweets = await Promise.all(
+          data.map(async (tweet: Tweet) => {
+            const mintAddress = extractMintAddress(tweet);
+            if (!mintAddress) return tweet;
+            
+            try {
+              const tokenInfo = await fetchTokenInfo(mintAddress);
+              return { ...tweet, tokenInfo };
+            } catch (err) {
+              console.error(`Failed to fetch token info for ${mintAddress}:`, err);
+              return tweet;
+            }
+          })
+        );
+
+        setTweets(enrichedTweets);
+      } catch (err) {
+        console.error('Failed to fetch initial tweets:', err);
+        setError('Failed to fetch tweets');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchInitialTweets();
+  }, []);
 
   useEffect(() => {
     fetchTweets();
