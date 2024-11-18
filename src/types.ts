@@ -1,10 +1,11 @@
 export interface TokenInfo {
   symbol: string;
   name: string;
-  imageUrl?: string;
-  price?: number;
-  marketCap?: number;
-  createdTimestamp?: number;
+  imageUrl: string;
+  price: number;
+  marketCap: number;
+  createdTimestamp: number;
+  mintAddress?: string; // Optional since pump.fun tokens might not have it
 }
 
 export interface Tweet {
@@ -27,6 +28,7 @@ export interface Tweet {
   mintAddress?: string;
   pricePerToken?: number;
   lastPriceCheck?: number;
+  source_type: 'pumpfun' | 'dexscreener';
 }
 
 export interface VirtualReserves {

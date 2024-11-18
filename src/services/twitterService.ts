@@ -69,28 +69,61 @@ interface TwitterSearchResponse {
   next_cursor: string;
 }
 
+export interface SearchConfig {
+  query: string;
+  type: 'pumpfun' | 'dexscreener';
+  urlPattern: string;
+}
+
+interface TwitterSearchState {
+  lastTweetId: string | null;
+  isFirstRequest: boolean;
+}
+
 export class TwitterService {
   private apiKey: string;
-  private lastTweetId: string | null = null;
-  private isFirstRequest = true;
+  private searchStates: Map<string, TwitterSearchState>;
+  private searchConfigs: SearchConfig[];
 
   constructor() {
     this.apiKey = process.env.NEXT_PUBLIC_SOCIALDATA_API_KEY || '';
     if (!this.apiKey) {
       console.error('NEXT_PUBLIC_SOCIALDATA_API_KEY is not set in environment variables');
     }
+    this.searchStates = new Map();
+    this.searchConfigs = [
+      { 
+        query: 'pump.fun/coin/', 
+        type: 'pumpfun',
+        urlPattern: 'pump.fun/coin/'
+      },
+      { 
+        query: 'dexscreener.com/solana/', 
+        type: 'dexscreener',
+        urlPattern: 'dexscreener.com/solana/'
+      }
+    ];
+    
+    // Initialize search states
+    this.searchConfigs.forEach(config => {
+      this.searchStates.set(config.type, {
+        lastTweetId: null,
+        isFirstRequest: true
+      });
+    });
   }
 
-  private buildQuery(): string {
-    const baseQuery = 'pump.fun/coin/ -filter:retweets';
+  private buildQuery(config: SearchConfig): string {
+    const state = this.searchStates.get(config.type)!;
+    const baseQuery = `${config.query} -filter:retweets`;
     
-    if (this.isFirstRequest) {
+    if (state.isFirstRequest) {
       // First request: get tweets from last 10 minutes
       const tenMinutesAgo = Math.floor(Date.now() / 1000) - (10 * 60);
       return `${baseQuery} since_time:${tenMinutesAgo}`;
-    } else if (this.lastTweetId) {
+    } else if (state.lastTweetId) {
       // Subsequent requests: get tweets newer than last seen tweet
-      return `${baseQuery} since_id:${this.lastTweetId}`;
+      return `${baseQuery} since_id:${state.lastTweetId}`;
     }
     
     // Fallback to last 30 seconds if something went wrong
@@ -98,10 +131,16 @@ export class TwitterService {
     return `${baseQuery} since_time:${thirtySecondsAgo}`;
   }
 
-  private transformTweet(rawTweet: RawTweet): Tweet {
+  private transformTweet(rawTweet: RawTweet, searchConfig: SearchConfig): Tweet {
+    // Find the matching URL for the search config type
+    const matchingUrl = rawTweet.entities.urls.find(url => 
+      url.expanded_url.includes(searchConfig.urlPattern)
+    );
+
     return {
       id_str: rawTweet.id_str,
       full_text: rawTweet.full_text,
+      tweet_created_at: rawTweet.tweet_created_at,
       user: {
         name: rawTweet.user.name,
         screen_name: rawTweet.user.screen_name,
@@ -110,11 +149,9 @@ export class TwitterService {
         friends_count: rawTweet.user.friends_count
       },
       entities: {
-        urls: rawTweet.entities.urls.map(url => ({
-          expanded_url: url.expanded_url
-        }))
+        urls: matchingUrl ? [{ expanded_url: matchingUrl.expanded_url }] : []
       },
-      tweet_created_at: rawTweet.tweet_created_at
+      source_type: searchConfig.type
     };
   }
 
@@ -125,54 +162,69 @@ export class TwitterService {
     }
 
     try {
-      const query = this.buildQuery();
-      
-      const params = new URLSearchParams({
-        query,
-        type: 'Latest'
-      });
+      const allTweets: Tweet[] = [];
 
-      const response = await fetch(
-        `https://api.socialdata.tools/twitter/search?${params}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Accept': 'application/json'
+      // Fetch tweets for each search configuration
+      for (const config of this.searchConfigs) {
+        try {
+          const query = this.buildQuery(config);
+          console.log(`Searching tweets for ${config.type}:`, { query });
+
+          const params = new URLSearchParams({
+            query,
+            type: 'Latest'
+          });
+
+          const response = await fetch(
+            `https://api.socialdata.tools/twitter/search?${params}`,
+            {
+              headers: {
+                'Authorization': `Bearer ${this.apiKey}`,
+                'Accept': 'application/json'
+              }
+            }
+          );
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Twitter API Error for ${config.type}:`, response.status, errorText);
+            continue;
           }
+
+          const data: TwitterSearchResponse = await response.json();
+
+          if (!data || !Array.isArray(data.tweets)) {
+            console.error(`Unexpected response format for ${config.type}:`, data);
+            continue;
+          }
+
+          // Filter and transform tweets
+          const relevantTweets = data.tweets
+            .filter(tweet => 
+              tweet.entities.urls.some(url => 
+                url.expanded_url.includes(config.urlPattern)
+              )
+            )
+            .map(tweet => this.transformTweet(tweet, config));
+
+          console.log(`Found ${relevantTweets.length} tweets for ${config.type}`);
+
+          if (relevantTweets.length > 0) {
+            // Update lastTweetId with the newest tweet's ID
+            const state = this.searchStates.get(config.type)!;
+            state.lastTweetId = relevantTweets[0].id_str;
+            state.isFirstRequest = false;
+            this.searchStates.set(config.type, state);
+          }
+
+          allTweets.push(...relevantTweets);
+        } catch (error) {
+          console.error(`Error processing ${config.type} tweets:`, error);
         }
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Twitter API Error:', response.status, errorText);
-        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data: TwitterSearchResponse = await response.json();
-
-      if (!data || !Array.isArray(data.tweets)) {
-        console.error('Unexpected response format:', data);
-        return [];
-      }
-
-      // Extract pump.fun URLs from tweets and transform them
-      const tweetsWithPumpLinks = data.tweets
-        .filter(tweet => 
-          tweet.entities.urls.some(url => 
-            url.expanded_url.includes('pump.fun/coin/')
-          )
-        )
-        .map(this.transformTweet);
-
-      if (tweetsWithPumpLinks.length > 0) {
-        // Update lastTweetId with the newest tweet's ID
-        this.lastTweetId = tweetsWithPumpLinks[0].id_str;
-      }
-
-      // After first request, switch to ID-based filtering
-      this.isFirstRequest = false;
-
-      return tweetsWithPumpLinks;
+      // Sort all tweets by ID (most recent first) and return
+      return allTweets.sort((a, b) => b.id_str.localeCompare(a.id_str));
     } catch (error) {
       console.error('Error fetching tweets:', error);
       if (error instanceof Error) {

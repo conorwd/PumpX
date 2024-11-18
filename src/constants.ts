@@ -1,6 +1,7 @@
 import { PublicKey } from '@solana/web3.js';
 import { ComputeBudgetProgram } from '@solana/web3.js';
 import { TransactionInstruction } from '@solana/web3.js';
+
 // Program IDs and Important Accounts
 export const PUMP_FUN_PROGRAM = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
 export const GLOBAL = new PublicKey('4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf');
@@ -36,7 +37,7 @@ export const PRIORITY_FEE_IX = ComputeBudgetProgram.setComputeUnitPrice({
 export const COMMITMENT_LEVEL = 'confirmed';
 
 // RPC Settings
-export const RPC_ENDPOINT = process.env.NEXT_PUBLIC_JITO_RPC_URL || 'https://ny.mainnet.block-engine.jito.wtf';
+export const RPC_ENDPOINT = process.env.NEXT_PUBLIC_HELIUS_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=f696d530-842d-4024-aedb-c707c4d18332';
 export const RPC_WEBSOCKET_ENDPOINT = RPC_ENDPOINT.replace('https://', 'wss://');
 
 // Jito Settings

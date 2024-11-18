@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Connection, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { PumpFunClient } from '../pumpFunClient';
@@ -25,6 +25,22 @@ export default function Home() {
   const [error, setError] = useState('');
   const [txSignature, setTxSignature] = useState('');
   const [action, setAction] = useState<'buy' | 'sell'>('buy');
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    // Initial check
+    checkMobile();
+    
+    // Add event listener for window resize
+    window.addEventListener('resize', checkMobile);
+    
+    // Cleanup
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Update localStorage when private key changes
   const handlePrivateKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,7 +100,7 @@ export default function Home() {
               <TwitterFeed />
             </div>
             <div className="space-y-4">
-              <TradingSettings />
+              <TradingSettings isMobile={isMobile} />
             </div>
           </div>
         </main>

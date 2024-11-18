@@ -4,15 +4,20 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useTradingContext } from '@/context/TradingContext';
 import { useBlacklist } from '@/context/BlacklistContext';
 import { useBuylist } from '@/context/BuylistContext';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Tooltip as ReactTooltip } from 'react-tooltip';
 import toast from 'react-hot-toast';
 import { Keypair, Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import bs58 from 'bs58';
 import PurchasedTokens from './PurchasedTokens';
 import OrderStatus from './OrderStatus';
+import { RPC_ENDPOINT } from '../constants';
 
-export default function TradingSettings() {
+interface TradingSettingsProps {
+  isMobile: boolean;
+}
+
+const TradingSettings: React.FC<TradingSettingsProps> = ({ isMobile }) => {
   const {
     privateKey,
     setPrivateKey,
@@ -38,44 +43,52 @@ export default function TradingSettings() {
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
-  const [newUsername, setNewUsername] = useState('');
-  const [newBlacklistUser, setNewBlacklistUser] = useState('');
+  const [newBlacklistedUser, setNewBlacklistedUser] = useState('');
   const [newBuylistUser, setNewBuylistUser] = useState('');
 
   // Initialize Solana connection
-  const connection = new Connection(process.env.NEXT_PUBLIC_HELIUS_RPC_URL || '');
+  const connection = new Connection(RPC_ENDPOINT, 'confirmed');
+
+  const updateBalance = useCallback(async (address: string) => {
+    try {
+      const pubKey = new PublicKey(address);
+      const balance = await connection.getBalance(pubKey);
+      setSolBalance(balance / LAMPORTS_PER_SOL);
+    } catch (err) {
+      console.error('Error fetching balance:', err);
+      setSolBalance(null);
+    }
+  }, [connection]);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (privateKey) {
-      try {
-        const decodedKey = bs58.decode(privateKey);
-        const keypair = Keypair.fromSecretKey(decodedKey);
-        setPublicKey(keypair.publicKey.toString());
-        updateBalance(keypair.publicKey.toString());
-      } catch (err) {
-        console.error('Error deriving public key:', err);
+    const checkPrivateKey = async () => {
+      if (privateKey) {
+        try {
+          const decodedKey = bs58.decode(privateKey);
+          const keypair = Keypair.fromSecretKey(decodedKey);
+          const pubKeyStr = keypair.publicKey.toString();
+          setPublicKey(pubKeyStr);
+          await updateBalance(pubKeyStr);
+        } catch (err) {
+          console.error('Error deriving public key:', err);
+          setPublicKey(null);
+        }
+      } else {
         setPublicKey(null);
+        setSolBalance(null);
       }
-    } else {
-      setPublicKey(null);
-      setSolBalance(null);
-    }
-  }, [privateKey]);
+    };
 
-  const updateBalance = async (address: string) => {
-    try {
-      const pubKey = new PublicKey(address);
-      const balance = await connection.getBalance(pubKey);
-      setSolBalance(balance / LAMPORTS_PER_SOL); // Convert lamports to SOL
-    } catch (err) {
-      console.error('Error fetching balance:', err);
-      setSolBalance(null);
-    }
-  };
+    checkPrivateKey();
+  }, [privateKey, updateBalance]);
+
+  if (!mounted) {
+    return null;
+  }
 
   const handlePrivateKeyChange = (value: string) => {
     try {
@@ -156,11 +169,30 @@ export default function TradingSettings() {
     }
   };
 
-  if (!mounted) return null;
+  const handleAddToBlacklist = () => {
+    if (newBlacklistedUser.trim()) {
+      addToBlacklist(newBlacklistedUser.trim());
+      setNewBlacklistedUser('');
+    }
+  };
+
+  const handleRemoveFromBlacklist = (username: string) => {
+    removeFromBlacklist(username);
+  };
+
+  const handleAddToBuylist = () => {
+    if (newBuylistUser.trim()) {
+      addToBuylist(newBuylistUser.trim());
+      setNewBuylistUser('');
+    }
+  };
+
+  const handleRemoveFromBuylist = (username: string) => {
+    removeFromBuylist(username);
+  };
 
   return (
     <div className="bg-gray-900 rounded-lg border border-gray-800 h-[calc(100vh-12rem)] shadow-xl">
-      {/* Header */}
       <div className="p-4 border-b border-gray-800">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-white">Trading Settings</h2>
@@ -187,7 +219,6 @@ export default function TradingSettings() {
           </div>
         </div>
 
-        {/* Navigation Tabs */}
         <div className="flex space-x-1 border-b border-gray-800">
           {['trading', 'holdings', 'wallet', 'blacklist', 'buylist'].map((tab) => (
             <button
@@ -205,7 +236,6 @@ export default function TradingSettings() {
         </div>
       </div>
       
-      {/* Content */}
       <div className="p-4 space-y-4 overflow-y-auto max-h-[calc(100vh-20rem)]">
         {error && (
           <div className="text-red-400 text-sm p-3 bg-red-900/20 rounded-lg border border-red-900/50 flex items-center space-x-2">
@@ -220,7 +250,7 @@ export default function TradingSettings() {
           <div className="space-y-4">
             <div className="space-y-4">
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <label className="block text-sm font-medium text-gray-300">Minimum Followers</label>
                   <div className="flex items-center gap-2">
                     <label className="text-sm text-gray-300">Check Followers</label>
@@ -253,7 +283,7 @@ export default function TradingSettings() {
 
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-300">Buy Amount (SOL)</label>
-                <div className="flex gap-2 mb-2">
+                <div className="flex flex-wrap gap-2 mb-2">
                   {[0.01, 0.1, 1, 10].map((value) => (
                     <button
                       key={value}
@@ -271,8 +301,8 @@ export default function TradingSettings() {
                 <input
                   type="number"
                   value={buyAmount}
-                  onChange={(e) => handleBuyAmountChange(parseFloat(e.target.value))}
-                  className="w-full px-3 py-2 bg-gray-800 rounded-lg border border-gray-700 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 text-white"
+                  onChange={(e) => handleBuyAmountChange(Number(e.target.value))}
+                  className="w-full rounded-lg bg-black/20 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none ring-1 ring-white/10 transition-opacity focus:ring-yellow-500/50"
                   min="0"
                   step="0.1"
                 />
@@ -280,8 +310,8 @@ export default function TradingSettings() {
 
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-300">Slippage (%)</label>
-                <div className="flex gap-2 mb-2">
-                  {[1, 2.5, 10, 25].map((value) => (
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {[0.1, 1, 5, 10].map((value) => (
                     <button
                       key={value}
                       onClick={() => handleSlippageChange(value)}
@@ -298,8 +328,8 @@ export default function TradingSettings() {
                 <input
                   type="number"
                   value={slippage}
-                  onChange={(e) => handleSlippageChange(parseFloat(e.target.value))}
-                  className="w-full px-3 py-2 bg-gray-800 rounded-lg border border-gray-700 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 text-white"
+                  onChange={(e) => handleSlippageChange(Number(e.target.value))}
+                  className="w-full rounded-lg bg-black/20 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none ring-1 ring-white/10 transition-opacity focus:ring-yellow-500/50"
                   min="0.1"
                   max="100"
                   step="0.1"
@@ -307,9 +337,81 @@ export default function TradingSettings() {
               </div>
             </div>
 
-            <div className="border-t border-gray-800 pt-4">
-              <h3 className="text-sm font-medium text-gray-300 mb-3">Recent Orders</h3>
-              <OrderStatus />
+            {/* Auto-Buy Settings */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-300">
+                  Auto-Buy
+                </label>
+                <div className="relative inline-block w-10 sm:w-12 h-6 sm:h-7">
+                  <input
+                    type="checkbox"
+                    checked={autoBuyEnabled}
+                    onChange={(e) => setAutoBuyEnabled(e.target.checked)}
+                    className="opacity-0 w-0 h-0"
+                    id="auto-buy-toggle"
+                  />
+                  <label
+                    htmlFor="auto-buy-toggle"
+                    className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                      autoBuyEnabled ? 'bg-yellow-500' : 'bg-gray-700'
+                    }`}
+                  >
+                    <span
+                      className={`absolute left-1 top-1 bg-white w-4 sm:w-5 h-4 sm:h-5 rounded-full transition-transform transform ${
+                        autoBuyEnabled ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {autoBuyEnabled && (
+                <div className="space-y-4 pl-4 border-l-2 border-gray-800">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-300">
+                      Follower Check
+                    </label>
+                    <div className="relative inline-block w-10 sm:w-12 h-6 sm:h-7">
+                      <input
+                        type="checkbox"
+                        checked={followerCheckEnabled}
+                        onChange={(e) => setFollowerCheckEnabled(e.target.checked)}
+                        className="opacity-0 w-0 h-0"
+                        id="follower-check-toggle"
+                      />
+                      <label
+                        htmlFor="follower-check-toggle"
+                        className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-colors ${
+                          followerCheckEnabled ? 'bg-yellow-500' : 'bg-gray-700'
+                        }`}
+                      >
+                        <span
+                          className={`absolute left-1 top-1 bg-white w-4 sm:w-5 h-4 sm:h-5 rounded-full transition-transform transform ${
+                            followerCheckEnabled ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {followerCheckEnabled && (
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-300">
+                        Minimum Followers
+                      </label>
+                      <input
+                        type="number"
+                        value={minFollowers}
+                        onChange={(e) => setMinFollowers(Number(e.target.value))}
+                        className="w-full rounded-lg bg-black/20 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none ring-1 ring-white/10 transition-opacity focus:ring-yellow-500/50"
+                        min="0"
+                        step="100"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -327,11 +429,12 @@ export default function TradingSettings() {
                       value={privateKey || ''}
                       onChange={(e) => handlePrivateKeyChange(e.target.value)}
                       className="w-full px-3 py-1.5 bg-gray-800 rounded-lg border border-gray-700 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500 text-white pr-10 text-sm"
-                      placeholder="Enter your private key"
+                      placeholder="Please setup your wallet"
                     />
                     <button
                       onClick={() => setShowKey(!showKey)}
                       className="absolute inset-y-0 right-0 px-2 flex items-center text-gray-400 hover:text-white"
+                      disabled={!privateKey}
                     >
                       {showKey ? (
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -370,50 +473,55 @@ export default function TradingSettings() {
 
               {/* Right Column - Wallet Info */}
               <div className="space-y-3 bg-gray-800/50 p-3 rounded-lg">
-                {publicKey ? (
-                  <>
-                    <div className="space-y-1">
-                      <label className="block text-xs font-medium text-gray-400">SOL Balance</label>
-                      <div className="text-lg font-semibold text-white">
-                        {solBalance !== null ? `${solBalance.toFixed(4)} SOL` : 'Loading...'}
-                      </div>
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-gray-400">SOL Balance</label>
+                  <div className="text-lg font-semibold text-white">
+                    {publicKey ? (solBalance !== null ? `${solBalance.toFixed(4)} SOL` : 'Loading...') : '0.0000 SOL'}
+                  </div>
+                </div>
+                
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-gray-400">Public Key</label>
+                  <div className="flex items-center space-x-2">
+                    <div className="text-xs text-gray-300 truncate flex-1 font-mono">
+                      {publicKey || 'No wallet connected'}
                     </div>
-                    
-                    <div className="space-y-1">
-                      <label className="block text-xs font-medium text-gray-400">Public Key</label>
-                      <div className="flex items-center space-x-2">
-                        <div className="text-xs text-gray-300 truncate flex-1 font-mono">
-                          {publicKey}
-                        </div>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(publicKey);
-                            toast.success('Address copied to clipboard');
-                          }}
-                          className="p-1 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700/50"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
+                    {publicKey && (
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(publicKey);
+                          toast.success('Address copied to clipboard');
+                        }}
+                        className="p-1 text-gray-400 hover:text-white rounded-lg hover:bg-gray-700/50"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-                    <div>
-                      <QRCodeSVG
-                        value={publicKey}
-                        size={100}
-                        level="M"
-                        className="mx-auto bg-white p-1.5 rounded-lg"
-                      />
+                <div className="flex justify-center items-center p-2 bg-gray-900/50 rounded-lg">
+                  {publicKey ? (
+                    <QRCodeSVG
+                      value={publicKey}
+                      size={100}
+                      level="M"
+                      className="bg-white p-1.5 rounded-lg"
+                    />
+                  ) : (
+                    <div className="w-[100px] h-[100px] flex items-center justify-center bg-gray-800/50 rounded-lg">
+                      <svg className="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                      </svg>
                     </div>
-                  </>
-                ) : (
-                  <div className="text-gray-400 text-xs text-center py-3">
-                    {isImporting 
-                      ? 'Paste your private key above and click Confirm Import'
-                      : 'Import or generate a wallet to view details'
-                    }
+                  )}
+                </div>
+
+                {!publicKey && (
+                  <div className="text-center text-xs text-gray-500">
+                    {isImporting ? 'Paste your private key above and click Confirm Import' : 'Import or generate a wallet to view details'}
                   </div>
                 )}
               </div>
@@ -431,16 +539,16 @@ export default function TradingSettings() {
             <div className="flex gap-2">
               <input
                 type="text"
-                value={newUsername}
-                onChange={(e) => setNewUsername(e.target.value)}
+                value={newBlacklistedUser}
+                onChange={(e) => setNewBlacklistedUser(e.target.value)}
                 placeholder="Enter Twitter username"
                 className="flex-1 rounded-lg bg-black/20 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none ring-1 ring-white/10 transition-shadow focus:ring-yellow-500/50"
               />
               <button
                 onClick={() => {
-                  if (newUsername.trim()) {
-                    addToBlacklist(newUsername.trim());
-                    setNewUsername('');
+                  if (newBlacklistedUser.trim()) {
+                    addToBlacklist(newBlacklistedUser.trim());
+                    setNewBlacklistedUser('');
                   }
                 }}
                 className="rounded-lg bg-yellow-500/10 px-4 py-2 text-sm font-medium text-yellow-500 transition-colors hover:bg-yellow-500/20"
@@ -519,4 +627,6 @@ export default function TradingSettings() {
       </div>
     </div>
   );
-}
+};
+
+export default TradingSettings;
