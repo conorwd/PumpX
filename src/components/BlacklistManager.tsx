@@ -1,10 +1,10 @@
 'use client';
 
-import { useBlacklist } from '../context/BlacklistContext';
+import { useBlacklistContext } from '../contexts/BlacklistContext';
 import { useState } from 'react';
 
 export default function BlacklistManager() {
-  const { blacklistedUsers, removeFromBlacklist } = useBlacklist();
+  const { blacklistedUsers, removeFromBlacklist } = useBlacklistContext();
   const [filter, setFilter] = useState('');
 
   const filteredUsers = blacklistedUsers.filter(user => 

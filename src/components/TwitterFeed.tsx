@@ -647,11 +647,14 @@ export default function TwitterFeed() {
       }));
       
       setTweets(prevTweets => {
+        // Combine new and existing tweets
         const updatedTweets = [...processedTweets, ...prevTweets];
-        // Sort by creation time
-        return updatedTweets.sort((a, b) => 
+        // Sort by creation time, newest first
+        const sortedTweets = updatedTweets.sort((a, b) => 
           parseInt(b.created_at) - parseInt(a.created_at)
         );
+        // Keep only the 100 most recent tweets
+        return sortedTweets.slice(0, 100);
       });
 
     } catch (err) {
