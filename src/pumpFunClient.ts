@@ -243,9 +243,15 @@ class PumpFunClient {
 
     const tokenAccountAddress = getAssociatedTokenAddressSync(mint, owner, false);
 
-    // Calculate the actual token amount from the percentage
-    const totalTokens = coinData.tokenTotalSupply;
-    const amountInUnits = Math.floor((totalTokens * percentage) / 100);
+    // Get token account info to get actual token balance
+    const tokenAccountInfo = await this.connection.getTokenAccountBalance(tokenAccountAddress);
+    if (!tokenAccountInfo?.value) {
+      throw new Error('Could not fetch token account balance');
+    }
+
+    // Calculate the actual token amount from the percentage using the real balance
+    const actualBalance = tokenAccountInfo.value.amount;
+    const amountInUnits = Math.floor((Number(actualBalance) * percentage) / 100);
     
     const expectedSolOutput = Math.floor(
       (amountInUnits * coinData.virtualSolReserves) / coinData.virtualTokenReserves
