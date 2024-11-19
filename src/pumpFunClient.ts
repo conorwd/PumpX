@@ -221,7 +221,7 @@ class PumpFunClient {
   private async createSellInstruction(
     owner: PublicKey,
     mint: PublicKey,
-    amount: number,
+    percentage: number,  
     coinData: CoinData,
     slippageDecimal: number
   ): Promise<{ transaction: Transaction; tokenAccount: PublicKey }> {
@@ -243,8 +243,10 @@ class PumpFunClient {
 
     const tokenAccountAddress = getAssociatedTokenAddressSync(mint, owner, false);
 
-    // Calculate amounts for sell
-    const amountInUnits = Math.floor(amount * TOKEN_DECIMALS);
+    // Calculate the actual token amount from the percentage
+    const totalTokens = coinData.tokenTotalSupply;
+    const amountInUnits = Math.floor((totalTokens * percentage) / 100);
+    
     const expectedSolOutput = Math.floor(
       (amountInUnits * coinData.virtualSolReserves) / coinData.virtualTokenReserves
     );
@@ -399,7 +401,7 @@ class PumpFunClient {
 
   async sell(
     mintAddress: string,
-    amount: number,
+    percentage: number,
     slippagePercent: number = 25
   ): Promise<string | null> {
     try {
@@ -412,7 +414,7 @@ class PumpFunClient {
       const { transaction } = await this.createSellInstruction(
         this.payer.publicKey,
         new PublicKey(mintAddress),
-        amount,
+        percentage,
         coinData,
         slippageDecimal
       );
