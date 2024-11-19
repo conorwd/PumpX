@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTradingContext } from '../contexts/TradingContext';
 import bs58 from 'bs58';
 import { Connection, PublicKey, LAMPORTS_PER_SOL, Keypair } from '@solana/web3.js';
@@ -35,23 +35,47 @@ export default function PurchasedTokens() {
   const [lastPurchaseTime, setLastPurchaseTime] = useState<number | null>(null);
   const [pumpFunClient, setPumpFunClient] = useState<PumpFunClient | null>(null);
 
-  const fetchSolBalance = async (publicKey: string) => {
+  // Add refs for background updates
+  const isUpdating = useRef(false);
+  const needsUpdate = useRef(false);
+  const mountedRef = useRef(true);
+  const lastUpdateTime = useRef(0);
+
+  const shouldUpdate = useCallback(() => {
+    const now = Date.now();
+    const timeSinceLastUpdate = now - lastUpdateTime.current;
+    return timeSinceLastUpdate >= 60000; // 1 minute in milliseconds
+  }, []);
+
+  const fetchSolBalance = useCallback(async (publicKey: string) => {
     try {
       const connection = new Connection(process.env.NEXT_PUBLIC_HELIUS_RPC_URL || '');
       const balance = await connection.getBalance(new PublicKey(publicKey));
-      setSolBalance(balance / LAMPORTS_PER_SOL);
+      if (mountedRef.current) {
+        setSolBalance(balance / LAMPORTS_PER_SOL);
+      }
     } catch (err) {
       console.error('Error fetching SOL balance:', err);
-      setError('Failed to fetch SOL balance');
+      if (mountedRef.current) {
+        setError('Failed to fetch SOL balance');
+      }
     }
-  };
+  }, []);
 
-  const fetchTokenHoldings = async () => {
-    if (!privateKey) return;
+  const fetchTokenHoldings = useCallback(async (showLoading = false, force = false) => {
+    if (!privateKey || isUpdating.current) {
+      needsUpdate.current = true;
+      return;
+    }
+
+    if (!force && !shouldUpdate()) {
+      return;
+    }
 
     try {
-      setLoading(true);
-      setError(null);
+      isUpdating.current = true;
+      if (showLoading) setLoading(true);
+      if (mountedRef.current) setError(null);
 
       const decodedKey = bs58.decode(privateKey);
       const publicKey = bs58.encode(decodedKey.slice(32));
@@ -84,11 +108,8 @@ export default function PurchasedTokens() {
         throw new Error(data.error.message);
       }
 
-      // Filter and map tokens
       const pumpTokens = data.result.items
-        .filter((asset: any) => {
-          return asset.id.toLowerCase().endsWith('pump');
-        })
+        .filter((asset: any) => asset.id.toLowerCase().endsWith('pump'))
         .map((asset: any) => ({
           mint: asset.id,
           name: asset.content?.metadata?.name || 'Unknown Token',
@@ -97,22 +118,131 @@ export default function PurchasedTokens() {
           decimals: asset.token_info?.decimals || 0,
           pricePerToken: asset.token_info?.price_info?.price_per_token,
           totalValue: asset.token_info?.price_info?.total_price,
-          sellAmount: 0 // Initialize with 0
+          sellAmount: (holdings.find(h => h.mint === asset.id)?.sellAmount || 0)
         }));
 
-      setHoldings(pumpTokens);
+      if (mountedRef.current) {
+        setHoldings(pumpTokens);
+        lastUpdateTime.current = Date.now();
+      }
     } catch (err) {
       console.error('Error fetching token holdings:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch token holdings');
+      if (mountedRef.current) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch token holdings');
+      }
     } finally {
-      setLoading(false);
+      isUpdating.current = false;
+      if (showLoading && mountedRef.current) setLoading(false);
     }
-  };
+  }, [privateKey, fetchSolBalance]);
 
-  const onTokenPurchase = () => {
+  const fetchTokenPrices = useCallback(async () => {
+    if (!holdings.length) return;
+
+    try {
+      const response = await fetch(process.env.NEXT_PUBLIC_HELIUS_RPC_URL || '', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'helius-prices',
+          method: 'searchAssets',
+          params: {
+            ownerAddress: null,
+            tokenType: "fungible",
+            grouping: ["mint"],
+            compressed: true,
+            page: 1,
+            limit: 1000,
+            displayOptions: {
+              showCollectionMetadata: true,
+              showUnverifiedCollections: true,
+              showZeroBalance: true,
+              showNativeBalance: true,
+              showInscription: true
+            }
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.error) {
+        throw new Error(data.error.message);
+      }
+
+      const updatedHoldings = holdings.map(token => {
+        const assetInfo = data.result.items.find((item: any) => 
+          item.id === token.mint
+        );
+
+        return {
+          ...token,
+          pricePerToken: assetInfo?.token_info?.price_info?.price_per_token || token.pricePerToken,
+          totalValue: assetInfo?.token_info?.price_info?.total_price || token.totalValue
+        };
+      });
+
+      if (mountedRef.current) {
+        setHoldings(updatedHoldings);
+      }
+    } catch (err) {
+      console.error('Error fetching token prices:', err);
+    }
+  }, [holdings]);
+
+  useEffect(() => {
+    if (!privateKey) return;
+
+    mountedRef.current = true;
+    
+    // Initial fetch with loading indicator
+    fetchTokenHoldings(true, true);
+
+    // Set up polling every minute
+    const intervalId = setInterval(() => {
+      fetchTokenHoldings(false, true);
+    }, 60000);
+
+    return () => {
+      mountedRef.current = false;
+      clearInterval(intervalId);
+    };
+  }, [privateKey, fetchTokenHoldings]);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (holdings.length > 0) {
+        fetchTokenPrices();
+      }
+    }, 1000); // Delay price fetch by 1 second
+
+    return () => clearTimeout(timeoutId);
+  }, [holdings.length]); // Only depend on holdings.length, not the entire holdings array
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.triggerTokenUpdate = () => {
+        fetchTokenHoldings(false, true);
+      };
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.triggerTokenUpdate = undefined;
+      }
+    };
+  }, [fetchTokenHoldings]);
+
+  const onTokenPurchase = useCallback(() => {
     setLastPurchaseTime(Date.now());
-    fetchTokenHoldings();
-  };
+    needsUpdate.current = true;
+    fetchTokenHoldings(false, true); // Force update on purchase
+  }, [fetchTokenHoldings]);
 
   const handleSellAmountChange = (mint: string, amount: number) => {
     setHoldings(prev => prev.map(token => {
@@ -174,85 +304,36 @@ export default function PurchasedTokens() {
     }
   };
 
-  useEffect(() => {
-    const initPumpFunClient = async () => {
-      try {
-        if (!privateKey || !process.env.NEXT_PUBLIC_HELIUS_RPC_URL) return;
-        
-        const connection = new Connection(process.env.NEXT_PUBLIC_HELIUS_RPC_URL);
-        const decodedKey = bs58.decode(privateKey);
-        const keypair = Keypair.fromSecretKey(decodedKey);
-        const client = new PumpFunClient(connection, keypair);
-        setPumpFunClient(client);
-      } catch (err) {
-        console.error('Error initializing PumpFunClient:', err);
-        setError('Failed to initialize trading client');
-      }
-    };
+  const handleRefreshClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    if (shouldUpdate()) {
+      fetchTokenHoldings(true, true); // Force update on manual refresh
+    } else {
+      const timeLeft = Math.ceil((60000 - (Date.now() - lastUpdateTime.current)) / 1000);
+      setError(`Please wait ${timeLeft} seconds before refreshing again`);
+    }
+  }, [fetchTokenHoldings, shouldUpdate]);
 
+  const initPumpFunClient = useCallback(async () => {
+    try {
+      if (!privateKey || !process.env.NEXT_PUBLIC_HELIUS_RPC_URL) return;
+      
+      const connection = new Connection(process.env.NEXT_PUBLIC_HELIUS_RPC_URL);
+      const decodedKey = bs58.decode(privateKey);
+      const keypair = Keypair.fromSecretKey(decodedKey);
+      const client = new PumpFunClient(connection, keypair);
+      setPumpFunClient(client);
+    } catch (err) {
+      console.error('Error initializing PumpFunClient:', err);
+      setError('Failed to initialize trading client');
+    }
+  }, [privateKey]);
+
+  useEffect(() => {
     if (privateKey) {
       initPumpFunClient();
     }
-  }, [privateKey]);
-
-  useEffect(() => {
-    const fetchTokenPrices = async () => {
-      if (!pumpFunClient) return;
-
-      const updatedHoldings = await Promise.all(
-        holdings.map(async (token) => {
-          if (token.pricePerToken) return token;
-
-          try {
-            const price = await pumpFunClient.getTokenPrice(token.mint);
-            return {
-              ...token,
-              pricePerToken: price || undefined
-            };
-          } catch (err) {
-            console.error(`Error fetching price for token ${token.mint}:`, err);
-            return {
-              ...token,
-              error: 'Failed to fetch token price'
-            };
-          }
-        })
-      );
-
-      setHoldings(updatedHoldings);
-    };
-
-    if (pumpFunClient && holdings.some(token => !token.pricePerToken)) {
-      fetchTokenPrices();
-    }
-  }, [pumpFunClient, holdings]);
-
-  // Initial fetch and polling setup
-  useEffect(() => {
-    if (!privateKey) return;
-
-    // Initial fetch
-    fetchTokenHoldings();
-
-    // Set up polling every 10 seconds
-    const intervalId = setInterval(fetchTokenHoldings, 10000);
-
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [privateKey]);
-
-  // Listen for external updates
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.triggerTokenUpdate = onTokenPurchase;
-    }
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.triggerTokenUpdate = undefined;
-      }
-    };
-  }, []);
+  }, [privateKey, initPumpFunClient]);
 
   if (!privateKey) {
     return (
@@ -298,7 +379,7 @@ export default function PurchasedTokens() {
         <div className="flex items-center justify-between px-1 mb-2 flex-shrink-0">
           <h3 className="text-sm font-medium text-gray-400">Token Holdings</h3>
           <button
-            onClick={fetchTokenHoldings}
+            onClick={handleRefreshClick}
             className="text-blue-400 hover:text-blue-300 text-xs flex items-center space-x-1"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
