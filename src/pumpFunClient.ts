@@ -287,61 +287,50 @@ class PumpFunClient {
 
   async sendAndConfirmTransaction(transaction: Transaction): Promise<string> {
     try {
-      // Step 1: Simulate the transaction
-      const serializedTx = transaction.serialize({ verifySignatures: false }).toString('base64');
-      const simulateResponse = await axios.post(this.rpcEndpoint, {
-        method: 'simulateTransaction',
-        jsonrpc: '2.0',
-        params: [serializedTx, {
-          sigVerify: false,
-          replaceRecentBlockhash: true,
-          encoding: 'base64',
-          commitment: 'confirmed'
-        }],
-        id: this.getNextRequestId()
-      }, { headers: COMMON_HEADERS });
-
-      if (simulateResponse.data.result.value.err) {
-        throw new Error(`Transaction simulation failed: ${JSON.stringify(simulateResponse.data.result.value.err)}`);
-      }
-
-      // Step 2: Get priority fee estimate
-      const priorityFeeResponse = await axios.post(this.rpcEndpoint, {
-        jsonrpc: '2.0',
-        id: this.getNextRequestId(),
-        method: 'getPriorityFeeEstimate',
-        params: [{
-          transaction: serializedTx,
-          options: {
-            priorityLevel: 'High'
-          }
-        }]
-      }, { headers: COMMON_HEADERS });
-
-      // Step 3: Sign and send the transaction
+      // Step 1: Get fresh blockhash and sign transaction
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+      transaction.recentBlockhash = blockhash;
       transaction.sign(this.payer);
       
-      const txResponse = await axios.post(this.rpcEndpoint, {
-        method: 'sendTransaction',
-        jsonrpc: '2.0',
-        params: [
-          transaction.serialize().toString('base64'),
-          { encoding: 'base64', preflightCommitment: 'confirmed' }
-        ],
-        id: this.getNextRequestId()
-      }, { headers: COMMON_HEADERS });
-
-      const signature = txResponse.data.result;
-
-      // Step 4: Confirm transaction
-      const confirmation = await this.connection.confirmTransaction({
-        signature,
-        blockhash: transaction.recentBlockhash!,
-        lastValidBlockHeight: await this.connection.getBlockHeight()
+      // Step 2: Send the transaction
+      const signature = await this.connection.sendTransaction(transaction, [this.payer], {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+        maxRetries: 3
       });
 
-      if (confirmation.value.err) {
-        throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+      // Step 3: Wait for confirmation with timeout
+      let done = false;
+      let status: any = null;
+      
+      const startTime = Date.now();
+      while (!done && Date.now() - startTime < 30000) {
+        try {
+          status = await this.connection.getSignatureStatus(signature);
+          
+          if (status?.value) {
+            if (status.value.err) {
+              throw new Error(`Transaction failed: ${JSON.stringify(status.value.err)}`);
+            }
+            
+            if (status.value.confirmationStatus === 'confirmed' || status.value.confirmationStatus === 'finalized') {
+              done = true;
+              break;
+            }
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (err) {
+          if (Date.now() - startTime > 30000) {
+            throw new Error('Transaction confirmation timeout');
+          }
+          console.warn('Retrying confirmation:', err);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      if (!done) {
+        throw new Error('Transaction confirmation timeout');
       }
 
       return signature;

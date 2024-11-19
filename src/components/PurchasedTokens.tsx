@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useTradingContext } from '../context/TradingContext';
+import { useTradingContext } from '../contexts/TradingContext';
 import bs58 from 'bs58';
 import { Connection, PublicKey, LAMPORTS_PER_SOL, Keypair } from '@solana/web3.js';
 import { PumpFunClient } from '../pumpFunClient';
@@ -263,106 +263,153 @@ export default function PurchasedTokens() {
   }
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-3">
-        <h3 className="text-sm font-medium text-gray-200">Your Holdings</h3>
-        <p className="text-xs text-gray-400">Balance: {solBalance.toFixed(4)} SOL</p>
-      </div>
-
+    <div className="h-full flex flex-col overflow-hidden">
       {error && (
-        <div className="mb-2 p-2 bg-red-900/50 border border-red-700 rounded text-xs text-red-400">
+        <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-3 py-2 rounded-lg text-sm mb-4">
           {error}
         </div>
       )}
 
-      <div className="space-y-2">
-        {holdings.map((token) => (
-          <div
-            key={token.mint}
-            className="p-3 bg-gray-900/50 border border-gray-700 rounded-lg hover:border-gray-600 transition-colors"
+      {/* SOL Balance Card - Fixed at top */}
+      <div className="bg-gray-800/30 rounded-lg p-3 mb-3 flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-7 h-7 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center">
+              <img src="/solana-logo.png" alt="SOL" className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-gray-200 font-medium">Solana</h3>
+              <p className="text-gray-400 text-xs">SOL</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-gray-200 font-medium">
+              {solBalance !== null ? solBalance.toFixed(4) : '---'}
+            </p>
+            <p className="text-gray-400 text-xs">
+              ≈ ${solBalance !== null ? (solBalance * 20).toFixed(2) : '---'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Holdings Section - Scrollable */}
+      <div className="flex flex-col min-h-0 flex-1">
+        <div className="flex items-center justify-between px-1 mb-2 flex-shrink-0">
+          <h3 className="text-sm font-medium text-gray-400">Token Holdings</h3>
+          <button
+            onClick={fetchTokenHoldings}
+            className="text-blue-400 hover:text-blue-300 text-xs flex items-center space-x-1"
           >
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center space-x-2">
-                  <h4 className="text-sm font-medium text-gray-200 truncate">{token.name}</h4>
-                  <span className="text-xs text-gray-500">{token.symbol}</span>
-                </div>
-                <div className="flex items-center mt-0.5 space-x-2">
-                  <p className="text-xs text-gray-400">{token.amount.toFixed(2)} tokens</p>
-                  {token.pricePerToken && (
-                    <>
-                      <span className="text-xs text-gray-600">•</span>
-                      <p className="text-xs text-gray-400">
-                        ${(token.amount * token.pricePerToken).toFixed(2)}
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <span>Refresh</span>
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 -mx-2 px-2">
+          {loading ? (
+            <div className="text-center py-8">
+              <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-blue-500 border-t-transparent"></div>
+              <p className="text-gray-400 text-xs mt-2">Loading holdings...</p>
+            </div>
+          ) : holdings.length > 0 ? (
+            <div className="space-y-2 pb-2">
+              {holdings.map((token) => (
+                <div key={token.mint} className="bg-gray-800/30 rounded-lg p-2.5 hover:bg-gray-800/40 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2.5 flex-1 min-w-0">
+                      <div className="w-7 h-7 bg-gradient-to-br from-gray-700 to-gray-600 rounded-full flex items-center justify-center">
+                        <span className="text-xs font-medium text-gray-300">{token.symbol.slice(0, 2)}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-gray-200 text-sm font-medium truncate">{token.name}</h4>
+                        <div className="flex items-center space-x-2 text-xs">
+                          <span className="text-gray-400">{token.symbol}</span>
+                          <span className="text-gray-600">•</span>
+                          <span className="text-gray-400">{token.amount.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right ml-4">
+                      <p className="text-gray-200 text-sm">
+                        ${token.pricePerToken ? (token.amount * token.pricePerToken).toFixed(2) : '---'}
                       </p>
-                    </>
-                  )}
-                </div>
-              </div>
-              {token.isLoading && (
-                <div className="text-xs text-yellow-500 animate-pulse">
-                  Processing...
-                </div>
-              )}
-            </div>
+                      <p className="text-gray-400 text-xs">
+                        ${token.pricePerToken?.toFixed(6) || '---'}
+                      </p>
+                    </div>
+                  </div>
 
-            {token.error && (
-              <div className="mb-2 text-xs text-red-400">
-                {token.error}
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-1">
-                <div className="flex gap-1">
-                  {[25, 50, 75, 100].map((percent) => (
-                    <button
-                      key={percent}
-                      onClick={() => handleSellAmountChange(token.mint, token.amount * (percent / 100))}
-                      className="px-3 py-1 text-xs bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 rounded transition-colors"
-                    >
-                      {percent}%
-                    </button>
-                  ))}
-                </div>
-                <button
-                  onClick={() => handleSellToken(token.mint)}
-                  disabled={token.sellAmount <= 0 || token.isLoading}
-                  className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                    token.sellAmount <= 0 || token.isLoading
-                      ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                      : 'bg-red-600 hover:bg-red-700 text-white'
-                  }`}
-                >
-                  {token.isLoading ? 'Selling...' : 'Sell'}
-                </button>
-              </div>
-
-              {token.sellAmount > 0 && (
-                <div className="flex justify-between items-center text-xs text-gray-400 pt-1">
-                  <span>
-                    Selling: {((token.sellAmount / token.amount) * 100).toFixed(1)}%
-                    {token.pricePerToken && (
-                      <span className="ml-1">
-                        (≈ ${(token.sellAmount * token.pricePerToken).toFixed(2)})
-                      </span>
+                  {/* Sell Controls - Collapsible */}
+                  <div className="mt-2.5 pt-2.5 border-t border-gray-700/50">
+                    <div className="flex items-center space-x-2">
+                      <div className="flex-1 min-w-0 grid grid-cols-4 gap-1">
+                        {[25, 50, 75, 100].map((percent) => (
+                          <button
+                            key={percent}
+                            onClick={() => handleSellAmountChange(token.mint, token.amount * (percent / 100))}
+                            className="px-1.5 py-0.5 text-xs bg-gray-700/50 hover:bg-gray-700 text-gray-300 rounded transition-colors"
+                          >
+                            {percent}%
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <input
+                          type="number"
+                          value={token.sellAmount || ''}
+                          onChange={(e) => handleSellAmountChange(token.mint, parseFloat(e.target.value))}
+                          className="w-full bg-gray-900/50 border border-gray-700 rounded px-2 py-0.5 text-xs text-gray-200 placeholder-gray-600"
+                          placeholder="Amount"
+                        />
+                      </div>
+                      <button
+                        onClick={() => handleSellToken(token.mint)}
+                        disabled={token.isLoading || !token.sellAmount || token.sellAmount <= 0}
+                        className={`px-3 py-0.5 rounded text-xs font-medium transition-all ${
+                          token.isLoading || !token.sellAmount || token.sellAmount <= 0
+                            ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
+                            : 'bg-red-500 hover:bg-red-600 text-white'
+                        }`}
+                      >
+                        {token.isLoading ? (
+                          <div className="animate-spin rounded-full h-3 w-3 border-2 border-white/30 border-t-white"></div>
+                        ) : (
+                          'Sell'
+                        )}
+                      </button>
+                    </div>
+                    {token.error && (
+                      <p className="mt-2 text-red-400 text-xs">{token.error}</p>
                     )}
-                  </span>
+                    {token.sellAmount > 0 && (
+                      <p className="mt-1.5 text-xs text-gray-400">
+                        Selling {((token.sellAmount / token.amount) * 100).toFixed(1)}% 
+                        {token.pricePerToken && (
+                          <span className="ml-1">
+                            (≈ ${(token.sellAmount * token.pricePerToken).toFixed(2)})
+                          </span>
+                        )}
+                      </p>
+                    )}
+                  </div>
                 </div>
-              )}
+              ))}
             </div>
-          </div>
-        ))}
-
-        {!loading && holdings.length === 0 && (
-          <p className="text-center text-xs text-gray-400 py-6">No tokens found</p>
-        )}
-
-        {loading && (
-          <div className="text-center py-6">
-            <p className="text-xs text-gray-400">Loading holdings...</p>
-          </div>
-        )}
+          ) : (
+            <div className="text-center py-8">
+              <div className="w-10 h-10 bg-gray-800/50 rounded-full flex items-center justify-center mx-auto mb-3">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+              </div>
+              <p className="text-gray-400 text-xs">No tokens found in your wallet</p>
+              <p className="text-gray-500 text-xs mt-1">Tokens will appear here after purchase</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

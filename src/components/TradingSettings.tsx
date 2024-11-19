@@ -9,9 +9,10 @@ import { toast } from 'react-hot-toast';
 import QRCode from 'qrcode';
 import { Keypair, Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import bs58 from 'bs58';
-import { EyeIcon, EyeSlashIcon, CogIcon, UserGroupIcon, WalletIcon } from '@heroicons/react/24/outline';
+import { EyeIcon, EyeSlashIcon, CogIcon, UserGroupIcon, WalletIcon, CurrencyDollarIcon } from '@heroicons/react/24/outline';
 import { RPC_ENDPOINT } from '../constants';
 import OrderStatus from './OrderStatus';
+import PurchasedTokens from './PurchasedTokens';
 
 interface TradingSettingsProps {
   isMobile: boolean;
@@ -195,6 +196,7 @@ const TradingSettings: React.FC<TradingSettingsProps> = ({ isMobile }) => {
     { name: 'Trading', icon: CogIcon },
     { name: 'Lists', icon: UserGroupIcon },
     { name: 'Wallet', icon: WalletIcon },
+    { name: 'Holdings', icon: CurrencyDollarIcon },
   ];
 
   return (
@@ -573,6 +575,18 @@ const TradingSettings: React.FC<TradingSettingsProps> = ({ isMobile }) => {
                 </Tab.Panel>
               </Tab.Panels>
             </Tab.Group>
+          </Tab.Panel>
+
+          {/* Holdings Panel */}
+          <Tab.Panel className="p-4 space-y-4 bg-gray-900">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold text-gray-200">Your Token Holdings</h3>
+              </div>
+              <div className="bg-gray-800 rounded-lg p-4">
+                <PurchasedTokens />
+              </div>
+            </div>
           </Tab.Panel>
 
           {/* Wallet Panel */}

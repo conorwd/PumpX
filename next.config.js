@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  experimental: {
+    appDir: true
+  },
+  distDir: '.next',
   webpack: (config) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,
@@ -12,3 +16,5 @@ const nextConfig = {
     return config;
   },
 }
+
+module.exports = nextConfig
