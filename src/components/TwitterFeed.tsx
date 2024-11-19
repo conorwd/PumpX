@@ -5,32 +5,19 @@ import { TwitterService } from '../services/twitterService';
 import { Connection, Keypair } from '@solana/web3.js';
 import { PumpFunClient } from '../pumpFunClient';
 import { DexscreenerClient } from '../dexscreenerClient';
-import { useTradingContext } from '../context/TradingContext';
-import { useBlacklist } from '../context/BlacklistContext';
-import { useBuylist } from '../context/BuylistContext';
-import { TokenInfo } from '../types';
+import { useTradingContext } from '../contexts/TradingContext';
+import { useBlacklistContext } from '../contexts/BlacklistContext';
+import { useBuylistContext } from '../contexts/BuylistContext';
+import { Tweet as ImportedTweet, TokenInfo } from '../types';
 import bs58 from 'bs58';
 import axios from 'axios';
 import { formatDistanceToNow } from 'date-fns';
-import { OrderStatus } from '../context/TradingContext';
+import { OrderStatus } from '../contexts/TradingContext';
 import { RPC_ENDPOINT } from '../constants';
 import { HeliusService } from '../services/heliusService';
 
-interface Tweet {
-  id_str: string;
+interface LocalTweet extends Omit<ImportedTweet, 'text'> {
   full_text: string;
-  tweet_created_at: string;
-  user: {
-    name: string;
-    screen_name: string;
-    profile_image_url_https: string;
-    followers_count: number;
-  };
-  entities: {
-    urls: {
-      expanded_url: string;
-    }[];
-  };
   source_type: 'pumpfun' | 'dexscreener';
   tokenInfo?: TokenInfo;
   mintAddress?: string;
@@ -49,27 +36,23 @@ export default function TwitterFeed() {
     privateKey,
     buyAmount,
     autoBuyEnabled,
-    minFollowers,
     followerCheckEnabled,
+    minFollowers,
+    creationTimeEnabled,
+    maxCreationTime,
     slippage,
     addOrder,
     updateOrder,
     orders,
   } = useTradingContext();
 
-  const { blacklistedUsers, addToBlacklist, isBlacklisted } = useBlacklist();
-  const { isBuylisted } = useBuylist();
-  const [tweets, setTweets] = useState<Tweet[]>([]);
+  const { blacklistedUsers, addToBlacklist, isBlacklisted } = useBlacklistContext();
+  const { isBuylisted } = useBuylistContext();
+  const [tweets, setTweets] = useState<LocalTweet[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   const [expandedTweets, setExpandedTweets] = useState<Set<string>>(new Set());
-  const [refreshRate, setRefreshRate] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return Number(localStorage.getItem('twitterRefreshRate')) || 10;
-    }
-    return 10;
-  });
   const [buyLoading, setBuyLoading] = useState<{ [key: string]: boolean }>({});
   const [txSignatures, setTxSignatures] = useState<{ [key: string]: string }>({});
   const [pumpFunClient, setPumpFunClient] = useState<PumpFunClient | null>(null);
@@ -86,6 +69,7 @@ export default function TwitterFeed() {
   const [activeSourceTypes, setActiveSourceTypes] = useState<Set<string>>(
     new Set(['pumpfun', 'dexscreener'])
   );
+  const [searchTerm, setSearchTerm] = useState('');
 
   const sourceTypes = [
     { 
@@ -104,9 +88,9 @@ export default function TwitterFeed() {
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const priceIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const twitterService = useRef(new TwitterService()).current;
+  const twitterServiceRef = useRef(TwitterService.getInstance());
 
-  const handleBuy = async (tweet: Tweet) => {
+  const handleBuy = async (tweet: LocalTweet) => {
     if (!tweet.mintAddress) return;
     
     const client = tweet.source_type === 'pumpfun' ? pumpFunClient : dexscreenerClient;
@@ -115,7 +99,7 @@ export default function TwitterFeed() {
     let pendingOrder: OrderStatus | undefined;
     
     try {
-      setBuyLoading(prev => ({ ...prev, [tweet.id_str]: true }));
+      setBuyLoading(prev => ({ ...prev, [tweet.id]: true }));
 
       // Create initial order with pending status
       const newOrder: Omit<OrderStatus, 'id' | 'timestamp'> = {
@@ -145,7 +129,7 @@ export default function TwitterFeed() {
       }
       
       if (signature) {  
-        setTxSignatures(prev => ({ ...prev, [tweet.id_str]: signature }));
+        setTxSignatures(prev => ({ ...prev, [tweet.id]: signature }));
         
         // Update order status to success immediately
         if (pendingOrder) {
@@ -157,7 +141,7 @@ export default function TwitterFeed() {
           // Remove successful order after 15 seconds
           setTimeout(() => {
             if (pendingOrder) {
-              updateOrder(pendingOrder.id, { status: 'success', error: 'removed' });
+              updateOrder(pendingOrder.id, { status: 'removed' });
             }
           }, 15000);
         }
@@ -182,19 +166,19 @@ export default function TwitterFeed() {
 
         setTimeout(() => {
           if (pendingOrder) {
-            updateOrder(pendingOrder.id, { status: 'error', error: 'removed' });
+            updateOrder(pendingOrder.id, { status: 'removed' });
           }
         }, 15000);
       }
     } finally {
-      setBuyLoading(prev => ({ ...prev, [tweet.id_str]: false }));
+      setBuyLoading(prev => ({ ...prev, [tweet.id]: false }));
     }
   };
 
-  const handleAutoBuy = async (tweet: Tweet) => {
+  const handleAutoBuy = async (tweet: LocalTweet) => {
     if (!tweet.mintAddress) return;
     
-    const autoBuyKey = `autobuy_${tweet.id_str}`;
+    const autoBuyKey = `autobuy_${tweet.id}`;
     
     // Check if we've already tried to autobuy this tweet
     const autoBuyAttempted = localStorage.getItem(autoBuyKey);
@@ -203,7 +187,7 @@ export default function TwitterFeed() {
     let pendingOrder: OrderStatus | undefined;
     
     try {
-      setBuyLoading(prev => ({ ...prev, [tweet.id_str]: true }));
+      setBuyLoading(prev => ({ ...prev, [tweet.id]: true }));
 
       // Create initial order with pending status
       const newOrder: Omit<OrderStatus, 'id' | 'timestamp'> = {
@@ -236,7 +220,7 @@ export default function TwitterFeed() {
       }
       
       if (signature) {  
-        setTxSignatures(prev => ({ ...prev, [tweet.id_str]: signature }));
+        setTxSignatures(prev => ({ ...prev, [tweet.id]: signature }));
         
         // Update order status to success immediately
         if (pendingOrder) {
@@ -248,7 +232,7 @@ export default function TwitterFeed() {
           // Remove successful order after 15 seconds
           setTimeout(() => {
             if (pendingOrder) {
-              updateOrder(pendingOrder.id, { status: 'success', error: 'removed' });
+              updateOrder(pendingOrder.id, { status: 'removed' });
             }
           }, 15000);
         }
@@ -273,39 +257,47 @@ export default function TwitterFeed() {
 
         setTimeout(() => {
           if (pendingOrder) {
-            updateOrder(pendingOrder.id, { status: 'error', error: 'removed' });
+            updateOrder(pendingOrder.id, { status: 'removed' });
           }
         }, 15000);
       }
     } finally {
-      setBuyLoading(prev => ({ ...prev, [tweet.id_str]: false }));
+      setBuyLoading(prev => ({ ...prev, [tweet.id]: false }));
       // Mark this tweet as attempted for autobuy
       localStorage.setItem(autoBuyKey, 'true');
     }
   };
 
-  const checkAndAutoBuy = useCallback((tweet: Tweet) => {
+  const checkAndAutoBuy = useCallback((tweet: LocalTweet) => {
     // Check if we've already tried to autobuy this tweet
-    const autoBuyKey = `autobuy_${tweet.id_str}`;
+    const autoBuyKey = `autobuy_${tweet.id}`;
     
     const userIsBuylisted = isBuylisted(tweet.user.screen_name);
     const userIsBlacklisted = isBlacklisted(tweet.user.screen_name);
     const meetsFollowerRequirement = tweet.user.followers_count >= minFollowers;
+
+    // Check if token meets creation time requirement
+    const tokenCreationTime = tweet.tokenInfo?.createdTimestamp || 0;
+    const currentTime = Date.now() / 1000; // Convert to seconds
+    const tokenAgeInMinutes = (currentTime - tokenCreationTime) / 60;
+    const meetsCreationTimeRequirement = !creationTimeEnabled || tokenAgeInMinutes <= maxCreationTime;
     
     // Determine if we should buy based on user lists and settings
     const shouldBuyBasedOnUser = 
       // Always buy from buylisted users (unless blacklisted)
       (userIsBuylisted && !userIsBlacklisted) ||
-      // For non-buylisted users, only buy if follower check is enabled AND they meet the requirement
-      (!userIsBuylisted && !userIsBlacklisted && followerCheckEnabled && meetsFollowerRequirement);
+      // For non-buylisted users, check follower and creation time requirements
+      (!userIsBuylisted && !userIsBlacklisted && 
+        (!followerCheckEnabled || meetsFollowerRequirement) && 
+        meetsCreationTimeRequirement);
 
     // Check all other conditions
     const shouldBuy = 
       autoBuyEnabled &&
       tweet.mintAddress &&
       tweet.tokenInfo &&
-      !txSignatures[tweet.id_str] &&
-      !buyLoading[tweet.id_str] &&
+      !txSignatures[tweet.id] &&
+      !buyLoading[tweet.id] &&
       privateKey &&
       (tweet.source_type === 'pumpfun' ? pumpFunClient : dexscreenerClient) &&
       !purchasedMints.has(tweet.mintAddress) &&
@@ -316,12 +308,13 @@ export default function TwitterFeed() {
       // Determine the reason for buying
       const buyReason = userIsBuylisted 
         ? 'User is buylisted' 
-        : 'Meets follower requirement';
+        : `Meets requirements (Followers: ${meetsFollowerRequirement}, Creation Time: ${meetsCreationTimeRequirement})`;
 
       console.log('Auto-buying token from tweet:', {
-        tweetId: tweet.id_str,
+        tweetId: tweet.id,
         user: tweet.user.screen_name,
         followers: tweet.user.followers_count,
+        tokenAge: Math.round(tokenAgeInMinutes),
         mintAddress: tweet.mintAddress,
         tokenSymbol: tweet.tokenInfo?.symbol || 'Unknown',
         isBuylisted: userIsBuylisted,
@@ -331,7 +324,7 @@ export default function TwitterFeed() {
       });
       handleAutoBuy(tweet);
     }
-  }, [autoBuyEnabled, minFollowers, followerCheckEnabled, txSignatures, buyLoading, privateKey, pumpFunClient, dexscreenerClient, isBlacklisted, purchasedMints, isBuylisted]);
+  }, [autoBuyEnabled, minFollowers, followerCheckEnabled, txSignatures, buyLoading, privateKey, pumpFunClient, dexscreenerClient, isBlacklisted, purchasedMints, isBuylisted, creationTimeEnabled, maxCreationTime]);
 
   useEffect(() => {
     if (autoBuyEnabled && tweets.length > 0) {
@@ -350,19 +343,6 @@ export default function TwitterFeed() {
   const addToPurchasedMints = useCallback((mintAddress: string) => {
     setPurchasedMints(prev => new Set([...prev, mintAddress]));
   }, []);
-
-  const handleRefreshRateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newRate = Number(e.target.value);
-    setRefreshRate(newRate);
-    localStorage.setItem('twitterRefreshRate', newRate.toString());
-    
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-    if (!isPaused) {
-      intervalRef.current = setInterval(fetchTweets, newRate * 1000);
-    }
-  };
 
   const toggleTweetExpansion = (tweetId: string) => {
     setExpandedTweets(prev => {
@@ -404,18 +384,20 @@ export default function TwitterFeed() {
   };
 
   const formatTweetTime = (timestamp: string) => {
-    const seconds = Math.floor((currentTime - new Date(timestamp).getTime()) / 1000);
+    const tweetTime = parseInt(timestamp);
+    const now = Date.now();
+    const diffInSeconds = Math.floor((now - tweetTime) / 1000);
     
-    if (seconds < 60) {
-      return `${seconds}s`;
-    } else if (seconds < 3600) {
-      const minutes = Math.floor(seconds / 60);
+    if (diffInSeconds < 60) {
+      return `${diffInSeconds}s`;
+    } else if (diffInSeconds < 3600) {
+      const minutes = Math.floor(diffInSeconds / 60);
       return `${minutes}m`;
-    } else if (seconds < 86400) {
-      const hours = Math.floor(seconds / 3600);
+    } else if (diffInSeconds < 86400) {
+      const hours = Math.floor(diffInSeconds / 3600);
       return `${hours}h`;
     } else {
-      const days = Math.floor(seconds / 86400);
+      const days = Math.floor(diffInSeconds / 86400);
       return `${days}d`;
     }
   };
@@ -441,7 +423,6 @@ export default function TwitterFeed() {
     try {
       console.log(`Fetching token info for ${idOrAddress} with source type: ${source_type}`);
       
-      // For pump.fun tokens, use the existing proxy
       if (source_type === 'pumpfun') {
         console.log('Using pump-proxy for Pump.fun token');
         const url = `/api/pump-proxy?mintAddress=${idOrAddress}`;
@@ -457,46 +438,63 @@ export default function TwitterFeed() {
           const now = Math.floor(Date.now() / 1000);
           const createdTimestamp = data.created_timestamp && data.created_timestamp > 1577836800 ? data.created_timestamp : now;
           
+          // Calculate price from market cap and total supply
+          const price = data.total_supply > 0 ? data.market_cap / (data.total_supply / 1e9) : 0;
+          
           return {
             symbol: data.symbol || '???',
             name: data.name || 'Unknown Token',
             imageUrl: data.image_uri || '',
-            price: data.market_cap / (data.total_supply / 1e9),
-            marketCap: data.usd_market_cap,
+            price: price,
+            marketCap: data.usd_market_cap || 0,
             createdTimestamp: createdTimestamp
           };
         }
         return undefined;
       } 
-      // For dexscreener tokens, get info directly from Dexscreener API
       else {
         console.log('Using Dexscreener API for pair ID:', idOrAddress);
-        const response = await fetch(`https://api.dexscreener.com/latest/dex/pairs/solana/${idOrAddress}`);
         
-        if (!response.ok) {
-          throw new Error(`Dexscreener API error! status: ${response.status}`);
+        // First try as a pair address
+        const pairResponse = await fetch(`https://api.dexscreener.com/latest/dex/pairs/solana/${idOrAddress}`);
+        const pairData = await pairResponse.json();
+        
+        if (pairData.pairs && pairData.pairs.length > 0) {
+          const pair = pairData.pairs[0];
+          return {
+            symbol: pair.baseToken.symbol,
+            name: pair.baseToken.name,
+            imageUrl: '', // Dexscreener doesn't provide token images
+            price: parseFloat(pair.priceUsd) || 0,
+            marketCap: pair.marketCap || 0,
+            createdTimestamp: pair.pairCreatedAt ? Math.floor(pair.pairCreatedAt / 1000) : Math.floor(Date.now() / 1000)
+          };
         }
-
-        const data = await response.json();
-        if (!data.pair) {
-          console.log('No pair data found in Dexscreener response');
-          return undefined;
+        
+        // If no pair found, try as a token address
+        console.log('No pair found, trying as token address');
+        const tokenResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${idOrAddress}`);
+        const tokenData = await tokenResponse.json();
+        
+        if (tokenData.pairs && tokenData.pairs.length > 0) {
+          const solanaPair = tokenData.pairs.find((pair: { chainId: string }) => pair.chainId === 'solana');
+          if (solanaPair) {
+            return {
+              symbol: solanaPair.baseToken.symbol,
+              name: solanaPair.baseToken.name,
+              imageUrl: '',
+              price: parseFloat(solanaPair.priceUsd) || 0,
+              marketCap: solanaPair.marketCap || 0,
+              createdTimestamp: solanaPair.pairCreatedAt ? Math.floor(solanaPair.pairCreatedAt / 1000) : Math.floor(Date.now() / 1000)
+            };
+          }
         }
-
-        const { pair } = data;
-        return {
-          symbol: pair.baseToken.symbol || '???',
-          name: pair.baseToken.name || 'Unknown Token',
-          imageUrl: pair.info?.imageUrl || '',
-          price: parseFloat(pair.priceUsd) || 0,
-          marketCap: pair.marketCap || 0,
-          createdTimestamp: Math.floor(pair.pairCreatedAt / 1000), // Convert from milliseconds to seconds
-          mintAddress: pair.baseToken.address // Store the mint address for later use
-        };
+        
+        console.log('No token data found in Dexscreener response');
+        return undefined;
       }
     } catch (error) {
       console.error('Error fetching token info:', error);
-      console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
       return undefined;
     }
   };
@@ -504,41 +502,52 @@ export default function TwitterFeed() {
   const updateTweetPrices = async () => {
     if (!pumpFunClient && !dexscreenerClient) return;
 
+    console.log('Updating tweet prices...');
     const updatedTweets = await Promise.all(
       tweets.map(async tweet => {
+        // Only update prices every 30 seconds
         if (!tweet.mintAddress || (tweet.lastPriceCheck && Date.now() - tweet.lastPriceCheck < 30000)) {
           return tweet;
         }
+
         try {
           let price: number | undefined;
-          if (tweet.source_type === 'pumpfun' && tweet.mintAddress) {
-            const result = await pumpFunClient!.getTokenPrice(tweet.mintAddress);
-            price = result ?? undefined;  // Convert null to undefined
-          } else if (tweet.mintAddress) {
-            const result = await dexscreenerClient!.getTokenPrice(tweet.mintAddress);
-            price = result ?? undefined;  // Convert null to undefined
+          
+          if (tweet.source_type === 'pumpfun' && pumpFunClient) {
+            const pumpPrice = await pumpFunClient.getTokenPrice(tweet.mintAddress);
+            price = pumpPrice ?? undefined;
+            console.log(`Updated Pump.fun price for ${tweet.mintAddress}: ${price}`);
+          } else if (tweet.source_type === 'dexscreener' && dexscreenerClient) {
+            price = await dexscreenerClient.getTokenPrice(tweet.mintAddress);
+            console.log(`Updated DEXScreener price for ${tweet.mintAddress}: ${price}`);
           }
-          return {
-            ...tweet,
-            pricePerToken: price,
-            lastPriceCheck: Date.now()
-          } as Tweet;
+
+          if (price !== undefined) {
+            if (tweet.tokenInfo) {
+              tweet.tokenInfo.price = price;
+            }
+            return {
+              ...tweet,
+              pricePerToken: price,
+              lastPriceCheck: Date.now()
+            };
+          }
         } catch (error) {
-          console.error('Error fetching price for tweet:', error);
-          return tweet;
+          console.error('Error updating price for tweet:', error);
         }
+        return tweet;
       })
     );
 
     // Sort tweets by creation time
     const sortedTweets = updatedTweets.sort((a, b) => 
-      new Date(b.tweet_created_at).getTime() - new Date(a.tweet_created_at).getTime()
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
 
     setTweets(sortedTweets);
   };
 
-  const extractMintAddress = (tweet: Tweet): string | undefined => {
+  const extractMintAddress = (tweet: LocalTweet): string | undefined => {
     const url = tweet.entities.urls[0]?.expanded_url;
     if (!url) return undefined;
 
@@ -552,165 +561,178 @@ export default function TwitterFeed() {
     }
   };
 
-  const fetchTweets = async () => {
-    if (isPaused) return;
+  const initClients = async () => {
+    try {
+      if (!privateKey) {
+        setPumpFunClient(null);
+        setDexscreenerClient(null);
+        return;
+      }
+
+      const decodedKey = bs58.decode(privateKey);
+      const keypair = Keypair.fromSecretKey(decodedKey);
+      const connection = new Connection(RPC_ENDPOINT, 'confirmed');
+      
+      // Initialize both clients with trading settings
+      const pumpClient = new PumpFunClient(
+        connection, 
+        keypair,
+        undefined, // rpcEndpoint is optional
+        {
+          followerCheckEnabled,
+          minFollowers,
+          creationTimeEnabled,
+          maxCreationTime
+        }
+      );
+      const dexClient = new DexscreenerClient(connection, keypair);
+      
+      setPumpFunClient(pumpClient);
+      setDexscreenerClient(dexClient);
+    } catch (err) {
+      console.error('Error initializing clients:', err);
+      setError('Failed to initialize trading clients');
+      setPumpFunClient(null);
+      setDexscreenerClient(null);
+    }
+  };
+
+  useEffect(() => {
+    initClients();
+  }, [privateKey]);
+
+  useEffect(() => {
+    if (pumpFunClient) {
+      initClients();
+    }
+  }, [followerCheckEnabled, minFollowers, creationTimeEnabled, maxCreationTime]);
+
+  const handleNewTweets = async (newTweets: ImportedTweet[], type: 'pumpfun' | 'dexscreener') => {
+    if (isPaused) {
+      console.log('Tweet processing paused');
+      return;
+    }
 
     try {
       setLoading(true);
-      const newTweets = await twitterService.searchTweets();
+      
+      // Process new tweets to get token info
+      const processedTweets = await Promise.all(newTweets.map(async tweet => {
+        const localTweet = {
+          ...tweet,
+          full_text: tweet.text,
+          source_type: type
+        } as LocalTweet;
 
-      // Process new tweets
-      const processedTweets = await Promise.all(
-        newTweets.map(async tweet => {
-          const mintAddress = extractMintAddress(tweet);
-          if (!mintAddress) return tweet;
-
-          let tokenInfo: TokenInfo | undefined;
-          try {
-            // Pass the source_type to fetchTokenInfo
-            tokenInfo = await fetchTokenInfo(mintAddress, tweet.source_type);
-          } catch (error) {
-            console.error('Error fetching token info:', error);
+        // Extract mint address
+        const mintAddress = extractMintAddress(localTweet);
+        if (mintAddress) {
+          localTweet.mintAddress = mintAddress;
+          // Fetch token info
+          const tokenInfo = await fetchTokenInfo(mintAddress, type);
+          if (tokenInfo) {
+            localTweet.tokenInfo = tokenInfo;
+            // Get initial price
+            if (type === 'pumpfun' && pumpFunClient) {
+              const pumpPrice = await pumpFunClient.getTokenPrice(mintAddress);
+              localTweet.pricePerToken = pumpPrice ?? undefined;
+            } else if (type === 'dexscreener' && dexscreenerClient) {
+              localTweet.pricePerToken = await dexscreenerClient.getTokenPrice(mintAddress);
+            }
+            localTweet.lastPriceCheck = Date.now();
           }
-
-          return {
-            ...tweet,
-            mintAddress,
-            tokenInfo,
-            lastPriceCheck: Date.now()
-          };
-        })
-      );
-
-      // Update state with new tweets
-      setTweets(prevTweets => {
-        // Create a map of existing tweets for deduplication
-        const existingTweets = new Map(prevTweets.map(t => [t.id_str, t]));
+        }
         
-        // Add new tweets to the map
-        processedTweets.forEach(tweet => {
-          existingTweets.set(tweet.id_str, tweet);
-        });
-
-        // Convert back to array and sort
-        return Array.from(existingTweets.values())
-          .sort((a, b) => new Date(b.tweet_created_at).getTime() - new Date(a.tweet_created_at).getTime());
+        return localTweet;
+      }));
+      
+      setTweets(prevTweets => {
+        const updatedTweets = [...processedTweets, ...prevTweets];
+        // Sort by creation time
+        return updatedTweets.sort((a, b) => 
+          parseInt(b.created_at) - parseInt(a.created_at)
+        );
       });
 
-    } catch (error) {
-      console.error('Error fetching tweets:', error);
-      setError(error instanceof Error ? error.message : 'Error fetching tweets');
+    } catch (err) {
+      console.error('Error processing tweets:', err);
+      setError('Failed to process tweets');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    const initClients = async () => {
-      try {
-        if (!privateKey) {
-          setPumpFunClient(null);
-          setDexscreenerClient(null);
-          return;
-        }
+    const twitterService = twitterServiceRef.current;
+    const cleanup = twitterService.subscribe(handleNewTweets);
 
-        const decodedKey = bs58.decode(privateKey);
-        const keypair = Keypair.fromSecretKey(decodedKey);
-        const connection = new Connection(RPC_ENDPOINT, 'confirmed');
-        
-        // Initialize both clients
-        const pumpClient = new PumpFunClient(connection, keypair);
-        const dexClient = new DexscreenerClient(connection, keypair);
-        
-        setPumpFunClient(pumpClient);
-        setDexscreenerClient(dexClient);
-      } catch (err) {
-        console.error('Error initializing clients:', err);
-        setError('Failed to initialize trading clients');
-        setPumpFunClient(null);
-        setDexscreenerClient(null);
-      }
-    };
+    // Load initial cached tweets
+    const pumpfunTweets = twitterService.getCachedTweets('pumpfun');
+    const dexscreenerTweets = twitterService.getCachedTweets('dexscreener');
+    
+    if (pumpfunTweets.length > 0) {
+      handleNewTweets(pumpfunTweets, 'pumpfun');
+    }
+    if (dexscreenerTweets.length > 0) {
+      handleNewTweets(dexscreenerTweets, 'dexscreener');
+    }
 
-    initClients();
-  }, [privateKey]);
-
-  useEffect(() => {
-    const fetchInitialTweets = async () => {
-      try {
-        setLoading(true);
-        const newTweets = await twitterService.searchTweets();
-
-        // Process new tweets
-        const processedTweets = await Promise.all(
-          newTweets.map(async tweet => {
-            const mintAddress = extractMintAddress(tweet);
-            if (!mintAddress) return tweet;
-
-            let tokenInfo: TokenInfo | undefined;
-            try {
-              tokenInfo = await fetchTokenInfo(mintAddress, tweet.source_type);
-            } catch (error) {
-              console.error('Error fetching token info:', error);
-            }
-
-            return {
-              ...tweet,
-              mintAddress,
-              tokenInfo
-            } as Tweet;
-          })
-        );
-
-        // Update state with new tweets
-        setTweets(prevTweets => {
-          // Create a map of existing tweets for deduplication
-          const existingTweets = new Map(prevTweets.map(t => [t.id_str, t]));
-          
-          // Add new tweets to the map
-          processedTweets.forEach(tweet => {
-            existingTweets.set(tweet.id_str, tweet);
-          });
-
-          // Convert back to array and sort
-          return Array.from(existingTweets.values())
-            .sort((a, b) => new Date(b.tweet_created_at).getTime() - new Date(a.tweet_created_at).getTime());
-        });
-
-      } catch (err) {
-        console.error('Failed to fetch initial tweets:', err);
-        setError('Failed to fetch tweets');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchInitialTweets();
-  }, []);
-
-  useEffect(() => {
-    fetchTweets();
-    const tweetInterval = setInterval(fetchTweets, 10000);
+    // Update prices periodically
     const priceInterval = setInterval(updateTweetPrices, 30000);
 
     return () => {
-      clearInterval(tweetInterval);
+      cleanup();
       clearInterval(priceInterval);
     };
   }, [isPaused]);
 
-  const getTweetUrl = (tweet: Tweet): string => {
-    return `https://twitter.com/${tweet.user.screen_name}/status/${tweet.id_str}`;
+  useEffect(() => {
+    const interval = setInterval(() => {
+      orders.forEach(order => {
+        if (order.status !== 'removed') {
+          updateOrder(order.id, { status: 'removed' });
+        }
+      });
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [orders, updateOrder]);
+
+  const filteredTweets = tweets.filter(tweet => {
+    if (!tweet) {
+      console.log('Found null tweet in filter');
+      return false;
+    }
+
+    const matchesSearch = !searchTerm || 
+      tweet.full_text.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      tweet.user.screen_name.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesType = activeSourceTypes.has(tweet.source_type);
+    
+    if (!matchesSearch || !matchesType) {
+      console.log(`Tweet ${tweet.id} filtered out:`, {
+        matchesSearch,
+        matchesType,
+        activeSourceTypes: Array.from(activeSourceTypes),
+        tweetType: tweet.source_type
+      });
+    }
+    
+    return matchesSearch && matchesType;
+  });
+
+  const getTweetUrl = (tweet: LocalTweet) => {
+    return `https://twitter.com/${tweet.user.screen_name}/status/${tweet.id}`;
   };
 
-  const getDexscreenerUrl = (tweet: Tweet): string => {
+  const getDexscreenerUrl = (tweet: LocalTweet): string => {
     if (!tweet.entities.urls.length) return 'https://dexscreener.com';
     const url = tweet.entities.urls[0].expanded_url;
     const [baseUrl, params] = url.split('?');
     return baseUrl;
   };
 
-  const getPumpFunUrl = (tweet: Tweet): string => {
+  const getPumpFunUrl = (tweet: LocalTweet): string => {
     if (!tweet.mintAddress) return 'https://pump.fun';
     return `https://pump.fun/coin/${tweet.mintAddress}`;
   };
@@ -727,10 +749,6 @@ export default function TwitterFeed() {
     });
   };
 
-  const filteredTweets = tweets.filter(tweet => 
-    activeSourceTypes.has(tweet.source_type)
-  );
-
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800">
@@ -746,19 +764,6 @@ export default function TwitterFeed() {
             {isPaused ? 'Resume' : 'Pause'}
           </button>
           <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-400">Refresh:</span>
-            <select
-              value={refreshRate}
-              onChange={handleRefreshRateChange}
-              className="bg-gray-800 border border-gray-700 rounded-md text-sm px-2 py-1 text-gray-300"
-            >
-              <option value="5">5s</option>
-              <option value="10">10s</option>
-              <option value="30">30s</option>
-              <option value="60">60s</option>
-            </select>
-          </div>
-          <div className="flex items-center space-x-2 px-4 border-l border-gray-700">
             {sourceTypes.map(({ type, label, activeClass, dotClass }) => (
               <button
                 key={type}
@@ -796,140 +801,131 @@ export default function TwitterFeed() {
           <div className="space-y-4 p-4">
             {filteredTweets
               .filter(tweet => !isBlacklisted(tweet.user.screen_name))
+              .sort((a, b) => parseInt(b.created_at) - parseInt(a.created_at))
               .map((tweet) => (
               <div
-                key={tweet.id_str}
+                key={tweet.id}
                 className={`bg-gray-900 rounded-lg shadow-lg border border-gray-700 p-3 hover:border-gray-600 transition-colors ${
                   tweet.source_type === 'pumpfun' 
-                    ? 'border-l-4 border-blue-500'
-                    : 'border-l-4 border-green-500'
+                    ? 'border-l-4 border-l-blue-500'
+                    : 'border-l-4 border-l-green-500'
                 }`}
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-3">
-                    <img
-                      src={tweet.user.profile_image_url_https}
-                      alt={tweet.user.name}
-                      className="w-8 h-8 rounded-full"
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex items-start space-x-3">
+                    <img 
+                      src={tweet.user.profile_image_url_https} 
+                      alt={tweet.user.screen_name}
+                      className="w-10 h-10 rounded-full"
                     />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-white text-sm truncate">
-                          {tweet.user.name}
-                        </span>
-                        <span className="text-gray-400 text-xs">
-                          @{tweet.user.screen_name}
-                        </span>
-                        <span className="text-gray-500 text-xs hidden sm:inline">·</span>
-                        <span className="text-gray-400 text-xs hidden sm:inline">
-                          {formatFollowerCount(tweet.user.followers_count)} followers
-                        </span>
-                        <span className="text-gray-500 text-xs hidden sm:inline">·</span>
-                        <a
-                          href={`https://twitter.com/${tweet.user.screen_name}/status/${tweet.id_str}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-gray-500 hover:text-gray-400 transition-colors hidden sm:inline"
-                        >
-                          <svg className="w-3 h-3 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                          </svg>
-                        </a>
+                    <div>
+                      <div className="flex items-center space-x-1">
+                        <span className="font-medium text-white">{tweet.user.name}</span>
+                        <span className="text-gray-500">@{tweet.user.screen_name}</span>
                       </div>
-                      <p className="mt-1 text-xs text-gray-300 break-words">
-                        {tweet.full_text}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <span className="text-xs text-gray-500">
-                      {formatTweetTime(tweet.tweet_created_at)}
-                    </span>
-                    {tweet.mintAddress && (
-                      <button
-                        onClick={() => addToBlacklist(tweet.user.screen_name)}
-                        className="text-gray-500 hover:text-gray-400 transition-colors"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-col space-x-0 space-y-2">
-                  {tweet.tokenInfo && (
-                    <div className="flex justify-between items-start">
-                      <div className="text-xs bg-gray-700/50 rounded p-2 space-y-1 flex-grow">
-                        <div className="flex justify-between text-gray-400">
-                          <span>Token:</span>
-                          <span className="text-yellow-400">{tweet.tokenInfo.name}</span>
+                      <div className="text-xs text-gray-500 flex items-center space-x-2">
+                        <div className="flex items-center space-x-1">
+                          <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
+                          </svg>
+                          <span>{formatFollowerCount(tweet.user.followers_count)}</span>
                         </div>
-                        <div className="flex justify-between text-gray-400">
-                          <span>Price:</span>
-                          <span className="text-yellow-400">
-                            ${tweet.pricePerToken?.toFixed(6) || tweet.tokenInfo?.price?.toFixed(6) || 'N/A'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-gray-400">
-                          <span>Market Cap:</span>
-                          <span className="text-yellow-400">
-                            ${formatMarketCap(tweet.tokenInfo.marketCap || 0)}
-                          </span>
-                        </div>
-                        {tweet.tokenInfo.createdTimestamp && (
-                          <div className="flex justify-between text-gray-400">
-                            <span>Created:</span>
-                            <span className="text-yellow-400">
-                              {formatCreationTime(tweet.tokenInfo.createdTimestamp)}
-                            </span>
-                          </div>
+                        {!isBlacklisted(tweet.user.screen_name) && (
+                          <button
+                            onClick={() => addToBlacklist(tweet.user.screen_name)}
+                            className="text-gray-500 hover:text-gray-400 transition-colors"
+                            title="Blacklist user"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                            </svg>
+                          </button>
                         )}
                       </div>
                     </div>
-                  )}
-                  <div className="flex justify-end space-x-2">
-                    {tweet.source_type === 'pumpfun' ? (
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="flex space-x-2">
                       <a
-                        href={getPumpFunUrl(tweet)}
+                        href={getTweetUrl(tweet)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="px-3 py-1 text-xs bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 rounded-lg border border-blue-500/20 transition-colors whitespace-nowrap"
+                        className="text-gray-500 hover:text-gray-400 transition-colors"
+                        title="View on Twitter"
                       >
-                        View on Pump.fun
-                      </a>
-                    ) : tweet.source_type === 'dexscreener' ? (
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M23.643 4.937c-.835.37-1.732.62-2.675.733.962-.576 1.7-1.49 2.048-2.578-.9.534-1.897.922-2.958 1.13-.85-.904-2.06-1.47-3.4-1.47-2.572 0-4.658 2.086-4.658 4.66 0 .364.042.718.12 1.06-3.873-.195-7.304-2.05-9.602-4.868-.4.69-.63 1.49-.63 2.342 0 1.616.823 3.043 2.072 3.878-.764-.025-1.482-.234-2.11-.583v.06c0 2.257 1.605 4.14 3.737 4.568-.392.106-.803.162-1.227.162-.3 0-.593-.028-.877-.082.593 1.85 2.313 3.198 4.352 3.234-1.595 1.25-3.604 1.995-5.786 1.995-.376 0-.747-.022-1.112-.065 2.062 1.323 4.51 2.093 7.14 2.093 8.57 0 13.255-7.098 13.255-13.254 0-.2-.005-.402-.014-.602.91-.658 1.7-1.477 2.323-2.41z" />
+                      </svg>
+                    </a>
                       <a
-                        href={getDexscreenerUrl(tweet)}
+                        href={tweet.source_type === 'pumpfun' ? getPumpFunUrl(tweet) : getDexscreenerUrl(tweet)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="px-3 py-1 text-xs bg-green-500/10 hover:bg-green-500/20 text-green-500 rounded-lg border border-green-500/20 transition-colors whitespace-nowrap"
+                        className="text-gray-500 hover:text-gray-400 transition-colors"
+                        title={tweet.source_type === 'pumpfun' ? "View on Pump.fun" : "View on DEXScreener"}
                       >
-                        View on Dexscreener
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
                       </a>
-                    ) : null}
+                    </div>
                     {privateKey && (
                       <button
                         onClick={() => handleBuy(tweet)}
-                        disabled={buyLoading[tweet.id_str] || !!txSignatures[tweet.id_str]}
+                        disabled={buyLoading[tweet.id] || !!txSignatures[tweet.id]}
                         className={`px-3 py-1 text-xs rounded-lg font-medium transition-colors whitespace-nowrap ${
-                          buyLoading[tweet.id_str]
+                          buyLoading[tweet.id]
                             ? 'bg-gray-500/10 text-gray-400 cursor-not-allowed border border-gray-500/20'
-                            : txSignatures[tweet.id_str]
+                            : txSignatures[tweet.id]
                             ? 'bg-green-500/10 text-green-400 border border-green-500/20'
                             : privateKey
                             ? 'bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 border border-yellow-500/20'
                             : 'bg-gray-500/10 text-gray-400 cursor-not-allowed border border-gray-500/20'
                         }`}
                       >
-                        {buyLoading[tweet.id_str]
+                        {buyLoading[tweet.id]
                           ? 'Buying...'
-                          : txSignatures[tweet.id_str]
+                          : txSignatures[tweet.id]
                           ? 'Bought'
                           : 'Buy'}
                       </button>
                     )}
                   </div>
+                </div>
+                <div className="flex-grow">
+                  {tweet.tokenInfo ? (
+                    <div className="text-xs bg-gray-700/50 rounded p-2 space-y-1 flex-grow">
+                      <div className="flex justify-between text-gray-400">
+                        <span>Token:</span>
+                        <span className="text-yellow-400">
+                          {tweet.tokenInfo.symbol} ({tweet.tokenInfo.name})
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-gray-400">
+                        <span>Market Cap:</span>
+                        <span className="text-yellow-400">
+                          ${formatMarketCap(tweet.tokenInfo.marketCap)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-gray-400">
+                        <span>Created:</span>
+                        <span className="text-yellow-400">
+                          {formatCreationTime(tweet.tokenInfo.createdTimestamp)}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-gray-500">Loading token information...</p>
+                  )}
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                  <span title={new Date(parseInt(tweet.created_at)).toLocaleString()}>
+                    {formatTweetTime(tweet.created_at)}
+                  </span>
+                  {' • '}
+                  <span>
+                    {tweet.source_type === 'pumpfun' ? 'Pump.fun' : 'DEXScreener'}
+                  </span>
                 </div>
               </div>
             ))}

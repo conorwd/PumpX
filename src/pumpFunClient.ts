@@ -87,11 +87,13 @@ class PumpFunClient {
   private payer: Keypair;
   private rpcEndpoint: string;
   private lastRequestId: number = 0;
+  private tradingSettings: any;
 
-  constructor(connection: Connection, payer: Keypair, rpcEndpoint?: string) {
+  constructor(connection: Connection, payer: Keypair, rpcEndpoint?: string, tradingSettings?: any) {
     this.connection = connection;
     this.payer = payer;
     this.rpcEndpoint = rpcEndpoint || process.env.NEXT_PUBLIC_HELIUS_RPC_URL || '';
+    this.tradingSettings = tradingSettings;
   }
 
   private getNextRequestId(): string {
@@ -349,6 +351,31 @@ class PumpFunClient {
     }
   }
 
+  public shouldBuyToken(coinData: any, twitterData: any): boolean {
+    const { followerCheckEnabled, minFollowers, creationTimeEnabled, maxCreationTime } = this.tradingSettings;
+
+    // Check follower count if enabled
+    if (followerCheckEnabled && twitterData) {
+      const followerCount = twitterData.public_metrics?.followers_count || 0;
+      if (followerCount < minFollowers) {
+        return false;
+      }
+    }
+
+    // Check creation time if enabled
+    if (creationTimeEnabled && coinData.created) {
+      const creationTime = new Date(coinData.created).getTime();
+      const currentTime = Date.now();
+      const minutesSinceCreation = (currentTime - creationTime) / (1000 * 60);
+      
+      if (minutesSinceCreation > maxCreationTime) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   async buy(
     mintAddress: string,
     amountInSol: number,
@@ -359,6 +386,11 @@ class PumpFunClient {
       const coinData = await this.getCoinData(mintAddress);
       if (!coinData) {
         throw new Error("Failed to fetch coin data");
+      }
+
+      if (!this.shouldBuyToken(coinData, null)) {
+        console.log('Skipping buy due to trading settings');
+        return null;
       }
 
       const { transaction } = await this.createBuyInstruction(
@@ -411,8 +443,12 @@ class PumpFunClient {
       }
 
       if (coinData.virtualTokenReserves === 0) return 0;
-      const solPrice = coinData.virtualSolReserves / coinData.virtualTokenReserves;
-      const usdPrice = coinData.usdMarketCap / (coinData.tokenTotalSupply / 1e9);
+      
+      // Convert total supply to proper decimal value (divide by 10^6 for 6 decimal tokens)
+      const adjustedTotalSupply = coinData.tokenTotalSupply / TOKEN_DECIMALS;
+      
+      // Calculate USD price per token
+      const usdPrice = coinData.usdMarketCap / adjustedTotalSupply;
       return usdPrice;
     } catch (error) {
       console.error('Error in getTokenPrice:', error);

@@ -1,15 +1,23 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { TradingProvider } from '@/context/TradingContext';
+import { TradingProvider } from '../contexts/TradingContext';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import TradingSettings from '@/components/TradingSettings';
 import TwitterFeed from '@/components/TwitterFeed';
 import { useState, useEffect } from 'react';
+import { Keypair, Connection } from '@solana/web3.js';
+import { useWalletContext } from '../contexts/WalletContext';
+import { useTradingContext } from '../contexts/TradingContext';
+import { PumpFunClient } from '../pumpFunClient';
+import bs58 from 'bs58';
 
 export default function Home() {
   const [isMobile, setIsMobile] = useState(false);
+  const [pumpFunClient, setPumpFunClient] = useState<PumpFunClient | null>(null);
+  const { privateKey } = useWalletContext();
+  const tradingSettings = useTradingContext();
 
   // Handle window resize
   useEffect(() => {
@@ -26,6 +34,19 @@ export default function Home() {
     // Cleanup
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  useEffect(() => {
+    if (!privateKey) return;
+
+    try {
+      const keyPair = Keypair.fromSecretKey(bs58.decode(privateKey));
+      const connection = new Connection(process.env.NEXT_PUBLIC_HELIUS_RPC_URL || '', 'confirmed');
+      const client = new PumpFunClient(connection, keyPair, process.env.NEXT_PUBLIC_HELIUS_RPC_URL, tradingSettings);
+      setPumpFunClient(client);
+    } catch (error) {
+      console.error('Error initializing PumpFunClient:', error);
+    }
+  }, [privateKey, tradingSettings]);
 
   return (
     <TradingProvider>

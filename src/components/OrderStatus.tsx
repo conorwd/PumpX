@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useTradingContext } from '@/context/TradingContext';
+import { useTradingContext } from '../contexts/TradingContext';
 import { formatDistanceToNow } from 'date-fns';
 
 const StatusIcon = ({ status }: { status: string }) => {
@@ -30,7 +30,10 @@ const StatusIcon = ({ status }: { status: string }) => {
 export default function OrderStatus() {
   const { orders } = useTradingContext();
 
-  if (orders.length === 0) {
+  // Filter out removed orders
+  const activeOrders = orders.filter(order => order.status !== 'removed');
+
+  if (activeOrders.length === 0) {
     return (
       <div className="bg-gray-900 rounded-lg p-6 border border-gray-800">
         <div className="text-center py-6">
@@ -52,13 +55,13 @@ export default function OrderStatus() {
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold text-white">Recent Orders</h3>
           <span className="text-xs text-gray-400 px-2 py-1 bg-gray-800 rounded-full">
-            {orders.length} {orders.length === 1 ? 'Order' : 'Orders'}
+            {activeOrders.length} {activeOrders.length === 1 ? 'Order' : 'Orders'}
           </span>
         </div>
       </div>
 
       <div className="divide-y divide-gray-800">
-        {orders.map((order) => (
+        {activeOrders.map((order) => (
           <div
             key={order.id}
             className={`p-4 hover:bg-gray-800/50 transition-colors ${

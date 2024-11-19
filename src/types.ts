@@ -9,26 +9,33 @@ export interface TokenInfo {
 }
 
 export interface Tweet {
-  id_str: string;
-  full_text: string;
+  id: string;
+  text: string;
+  created_at: string;
   user: {
     name: string;
     screen_name: string;
     profile_image_url_https: string;
+    verified: boolean;
     followers_count: number;
-    friends_count: number;
   };
   entities: {
-    urls: {
+    urls: Array<{
+      display_url: string;
       expanded_url: string;
-    }[];
+      url: string;
+    }>;
   };
-  tweet_created_at: string;
+  retweet_count: number;
+  favorite_count: number;
+  views_count: number | null;
+  bookmark_count: number | null;
+  quoted_status?: Tweet;
   tokenInfo?: TokenInfo;
   mintAddress?: string;
   pricePerToken?: number;
   lastPriceCheck?: number;
-  source_type: 'pumpfun' | 'dexscreener';
+  source_type?: 'pumpfun' | 'dexscreener';
 }
 
 export interface VirtualReserves {

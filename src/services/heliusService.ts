@@ -52,7 +52,7 @@ export class HeliusService {
         imageUrl: asset.image || '',
         price: 0,  // Will be updated if price info exists
         marketCap: 0,  // Will be updated if we can calculate it
-        createdTimestamp: Math.floor(Date.now() / 1000)
+        createdTimestamp: asset.created_at ? Math.floor(new Date(asset.created_at).getTime() / 1000) : Math.floor(Date.now() / 1000)
       };
 
       // Try to get price information
@@ -119,7 +119,8 @@ export class HeliusService {
             name: asset.content?.metadata?.name || 'Unknown Token',
             imageUrl: asset.content?.links?.image || '',
             price: pricePerToken,
-            marketCap
+            marketCap,
+            createdTimestamp: asset.created_at ? Math.floor(new Date(asset.created_at).getTime() / 1000) : Math.floor(Date.now() / 1000)
           };
         });
     } catch (error) {
