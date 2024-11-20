@@ -117,12 +117,13 @@ export default function TwitterFeed() {
       let result: { success: boolean; signature?: string; error?: string };
       
       if (tweet.source_type === 'pumpfun' && tweet.mintAddress) {  
-        const buyResult = await pumpFunClient!.autoBuy(tweet.mintAddress, tweet);
-        if (!buyResult.success) {
-          console.log('Skipping buy - PumpFun trading settings check failed:', buyResult.error);
+        const buyCheck = await pumpFunClient!.autoBuy(tweet.mintAddress, tweet);
+        if (!buyCheck.success) {
+          console.log('Skipping buy - PumpFun trading settings check failed:', buyCheck.error);
           return;
         }
-        result = { success: true, signature: buyResult.signature };
+        const buyResult = await pumpFunClient!.buy(tweet.mintAddress, buyAmount, slippage);
+        result = { success: !!buyResult, signature: buyResult || undefined };
       } else if (tweet.mintAddress) {  
         result = await dexscreenerClient!.buyToken(tweet.mintAddress, buyAmount);
       } else {
@@ -197,9 +198,9 @@ export default function TwitterFeed() {
 
       // Check if autobuy is allowed before creating pending order
       if (tweet.source_type === 'pumpfun' && tweet.mintAddress) {
-        const result = await pumpFunClient!.autoBuy(tweet.mintAddress, tweet);
-        if (!result.success) {
-          console.log('Skipping buy - PumpFun trading settings check failed:', result.error);
+        const buyCheck = await pumpFunClient!.autoBuy(tweet.mintAddress, tweet);
+        if (!buyCheck.success) {
+          console.log('Skipping buy - PumpFun trading settings check failed:', buyCheck.error);
           return;
         }
       } else if (tweet.source_type === 'dexscreener' && tweet.mintAddress) {
@@ -225,8 +226,8 @@ export default function TwitterFeed() {
       let result: { success: boolean; signature?: string; error?: string };
       
       if (tweet.source_type === 'pumpfun' && tweet.mintAddress) {  
-        const pumpResult = await pumpFunClient!.buy(tweet.mintAddress, buyAmount, slippage);
-        result = { success: !!pumpResult, signature: pumpResult || undefined };
+        const buyResult = await pumpFunClient!.buy(tweet.mintAddress, buyAmount, slippage);
+        result = { success: !!buyResult, signature: buyResult || undefined };
       } else if (tweet.mintAddress) {  
         result = await dexscreenerClient!.buyToken(tweet.mintAddress, buyAmount);
       } else {
