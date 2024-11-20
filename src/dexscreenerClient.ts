@@ -3,9 +3,9 @@ import {
   Keypair,
   VersionedTransaction,
   LAMPORTS_PER_SOL,
-  PublicKey,
   Transaction,
   TransactionInstruction,
+  PublicKey,
 } from '@solana/web3.js';
 import { AnchorProvider, Wallet } from '@project-serum/anchor';
 import fetch from 'cross-fetch';
@@ -104,26 +104,25 @@ class DexscreenerClient {
     // Create a wallet adapter that implements the Wallet interface
     const walletAdapter: Wallet = {
       publicKey: wallet.publicKey,
-      signTransaction: async (tx: Transaction | VersionedTransaction) => {
-        // Ensure proper signing for both Transaction and VersionedTransaction
+      signTransaction: async (tx: Transaction): Promise<Transaction> => {
         if (tx instanceof VersionedTransaction) {
           tx.sign([wallet]);
+          return tx as unknown as Transaction;
         } else {
           tx.partialSign(wallet);
+          return tx;
         }
-        return tx;
       },
-      signAllTransactions: async (
-        txs: (Transaction | VersionedTransaction)[]
-      ) => {
+      signAllTransactions: async (txs: Transaction[]): Promise<Transaction[]> => {
         return Promise.all(
           txs.map(async (tx) => {
             if (tx instanceof VersionedTransaction) {
               tx.sign([wallet]);
+              return tx as unknown as Transaction;
             } else {
               tx.partialSign(wallet);
+              return tx;
             }
-            return tx;
           })
         );
       },
@@ -318,7 +317,14 @@ class DexscreenerClient {
       try {
         transaction.sign([this.wallet]);
       } catch (signError) {
-        if (!transaction.signatures.some(sig => sig.publicKey.equals(this.wallet.publicKey))) {
+        // Check if transaction is already signed
+        const walletKey = this.wallet.publicKey.toBase58();
+        const isAlreadySigned = transaction.signatures.some((sig, index) => {
+          const key = transaction.message.staticAccountKeys[index]?.toBase58();
+          return key === walletKey && sig !== null;
+        });
+        
+        if (!isAlreadySigned) {
           console.error('Transaction signing failed:', signError);
           return { success: false, error: 'Transaction signing failed' };
         }

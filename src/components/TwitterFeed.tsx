@@ -126,13 +126,15 @@ export default function TwitterFeed() {
       }
       
       if (result.success && result.signature) {  
-        setTxSignatures(prev => ({ ...prev, [tweet.id]: result.signature }));
+        // Ensure signature is not undefined before setting
+        const signature = result.signature;
+        setTxSignatures(prev => ({ ...prev, [tweet.id]: signature }));
         
         // Update order status to success
         if (pendingOrder) {
           updateOrder(pendingOrder.id, {
             status: 'success',
-            signature: result.signature
+            signature
           });
 
           // Remove successful order after 15 seconds
@@ -228,13 +230,15 @@ export default function TwitterFeed() {
       }
       
       if (result.success && result.signature) {  
-        setTxSignatures(prev => ({ ...prev, [tweet.id]: result.signature }));
+        // Ensure signature is not undefined before setting
+        const signature = result.signature;
+        setTxSignatures(prev => ({ ...prev, [tweet.id]: signature }));
         
         // Update order status to success
         if (pendingOrder) {
           updateOrder(pendingOrder.id, {
             status: 'success',
-            signature: result.signature
+            signature
           });
 
           // Remove successful order after 15 seconds
