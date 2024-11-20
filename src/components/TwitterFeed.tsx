@@ -117,8 +117,12 @@ export default function TwitterFeed() {
       let result: { success: boolean; signature?: string; error?: string };
       
       if (tweet.source_type === 'pumpfun' && tweet.mintAddress) {  
-        const pumpResult = await pumpFunClient!.buy(tweet.mintAddress, buyAmount, slippage);
-        result = { success: !!pumpResult, signature: pumpResult || undefined };
+        const result = await pumpFunClient!.autoBuy(tweet.mintAddress, tweet);
+        if (!result.success) {
+          console.log('Skipping buy - PumpFun trading settings check failed:', result.error);
+          return;
+        }
+        result = { success: true, signature: result.signature };
       } else if (tweet.mintAddress) {  
         result = await dexscreenerClient!.buyToken(tweet.mintAddress, buyAmount);
       } else {
@@ -193,9 +197,9 @@ export default function TwitterFeed() {
 
       // Check if autobuy is allowed before creating pending order
       if (tweet.source_type === 'pumpfun' && tweet.mintAddress) {
-        const coinData = await pumpFunClient!.getCoinData(tweet.mintAddress);
-        if (!coinData || !pumpFunClient!.shouldBuyToken(coinData, tweet)) {
-          console.log('Skipping buy - PumpFun trading settings check failed');
+        const result = await pumpFunClient!.autoBuy(tweet.mintAddress, tweet);
+        if (!result.success) {
+          console.log('Skipping buy - PumpFun trading settings check failed:', result.error);
           return;
         }
       } else if (tweet.source_type === 'dexscreener' && tweet.mintAddress) {
