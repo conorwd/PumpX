@@ -102,10 +102,38 @@ export class TwitterService {
   }
 
   private transformTweet(rawTweet: RawTweet): Tweet {
+    // Handle null text content
+    if (!rawTweet.text && !rawTweet.full_text) {
+      console.log('Tweet has no text content, skipping transformation:', rawTweet.id_str);
+      return {
+        id: rawTweet.id_str,
+        text: '',
+        created_at: Date.now().toString(),
+        user: rawTweet.user,
+        entities: {
+          urls: []
+        },
+        source_type: 'pumpfun',
+        retweet_count: rawTweet.retweet_count,
+        favorite_count: rawTweet.favorite_count,
+        views_count: rawTweet.views_count ?? null,
+        bookmark_count: rawTweet.bookmark_count ?? null,
+        mintAddress: rawTweet.mint_address,
+        tokenInfo: rawTweet.token_info ? {
+          symbol: rawTweet.token_info.symbol,
+          name: rawTweet.token_info.name,
+          imageUrl: rawTweet.token_info.image_url,
+          price: rawTweet.token_info.price,
+          marketCap: rawTweet.token_info.market_cap,
+          createdTimestamp: rawTweet.token_info.created_timestamp
+        } : undefined
+      };
+    }
+
     // Combine URLs from both entities.urls and entities.media
     const urls = [
-      ...(rawTweet.entities.urls || []),
-      ...(rawTweet.entities.media || [])
+      ...(rawTweet.entities?.urls || []),
+      ...(rawTweet.entities?.media || [])
     ].map(url => ({
       display_url: url.display_url,
       expanded_url: url.expanded_url,
@@ -116,13 +144,13 @@ export class TwitterService {
     
     console.log('Raw tweet timestamp:', rawTweet.tweet_created_at);
     // Parse the timestamp and convert to current timezone
-    const createdAtMs = new Date(rawTweet.tweet_created_at.replace('.000000Z', 'Z')).getTime();
+    const createdAtMs = new Date(rawTweet.tweet_created_at?.replace('.000000Z', 'Z') || Date.now()).getTime();
     console.log('Converted timestamp:', createdAtMs);
     
     const tweet: Tweet = {
       id: rawTweet.id_str,
       text: rawTweet.full_text || rawTweet.text || '',
-      created_at: createdAtMs.toString(), // Convert Twitter timestamp to milliseconds
+      created_at: createdAtMs.toString(),
       user: {
         name: rawTweet.user.name,
         screen_name: rawTweet.user.screen_name,
@@ -133,7 +161,7 @@ export class TwitterService {
       entities: {
         urls: urls
       },
-      source_type: 'pumpfun', // This will be overridden by the queryType in onmessage
+      source_type: 'pumpfun', 
       retweet_count: rawTweet.retweet_count,
       favorite_count: rawTweet.favorite_count,
       views_count: rawTweet.views_count ?? null,

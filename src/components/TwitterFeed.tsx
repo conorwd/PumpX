@@ -114,28 +114,25 @@ export default function TwitterFeed() {
       // Add the order and get its ID
       pendingOrder = addOrder(newOrder);
 
-      let signature: string | undefined;
+      let result: { success: boolean; signature?: string; error?: string };
+      
       if (tweet.source_type === 'pumpfun' && tweet.mintAddress) {  
-        const result = await pumpFunClient!.buy(tweet.mintAddress, buyAmount, slippage);
-        signature = result ?? undefined;
+        const pumpResult = await pumpFunClient!.buy(tweet.mintAddress, buyAmount, slippage);
+        result = { success: !!pumpResult, signature: pumpResult || undefined };
       } else if (tweet.mintAddress) {  
-        const result = await dexscreenerClient!.buyToken(tweet.mintAddress, buyAmount, slippage * 100);
-        if (!result.success) {
-          throw new Error(result.error);
-        }
-        signature = result.signature ?? undefined;
+        result = await dexscreenerClient!.buyToken(tweet.mintAddress, buyAmount);
       } else {
         throw new Error('No mint address found for token');
       }
       
-      if (signature) {  
-        setTxSignatures(prev => ({ ...prev, [tweet.id]: signature }));
+      if (result.success && result.signature) {  
+        setTxSignatures(prev => ({ ...prev, [tweet.id]: result.signature }));
         
-        // Update order status to success immediately
+        // Update order status to success
         if (pendingOrder) {
           updateOrder(pendingOrder.id, {
             status: 'success',
-            signature
+            signature: result.signature
           });
 
           // Remove successful order after 15 seconds
@@ -146,7 +143,7 @@ export default function TwitterFeed() {
           }, 15000);
         }
       } else {
-        throw new Error('Transaction failed');
+        throw new Error(result.error || 'Transaction failed');
       }
     } catch (error: any) {
       console.error('Buy error:', error);
@@ -189,6 +186,23 @@ export default function TwitterFeed() {
     try {
       setBuyLoading(prev => ({ ...prev, [tweet.id]: true }));
 
+      const client = tweet.source_type === 'pumpfun' ? pumpFunClient : dexscreenerClient;
+      if (!client) return;
+
+      // Check if autobuy is allowed before creating pending order
+      if (tweet.source_type === 'pumpfun' && tweet.mintAddress) {
+        const coinData = await pumpFunClient!.getCoinData(tweet.mintAddress);
+        if (!coinData || !pumpFunClient!.shouldBuyToken(coinData, tweet)) {
+          console.log('Skipping buy - PumpFun trading settings check failed');
+          return;
+        }
+      } else if (tweet.source_type === 'dexscreener' && tweet.mintAddress) {
+        if (!dexscreenerClient!.shouldBuyToken(tweet.mintAddress)) {
+          console.log('Skipping buy - Dexscreener trading settings check failed');
+          return;
+        }
+      }
+
       // Create initial order with pending status
       const newOrder: Omit<OrderStatus, 'id' | 'timestamp'> = {
         tokenSymbol: tweet.tokenInfo?.symbol || '???',
@@ -202,31 +216,25 @@ export default function TwitterFeed() {
       // Add the order and get its ID
       pendingOrder = addOrder(newOrder);
 
-      const client = tweet.source_type === 'pumpfun' ? pumpFunClient : dexscreenerClient;
-      if (!client) return;
-
-      let signature: string | undefined;
+      let result: { success: boolean; signature?: string; error?: string };
+      
       if (tweet.source_type === 'pumpfun' && tweet.mintAddress) {  
-        const result = await pumpFunClient!.buy(tweet.mintAddress, buyAmount, slippage);
-        signature = result ?? undefined;
+        const pumpResult = await pumpFunClient!.buy(tweet.mintAddress, buyAmount, slippage);
+        result = { success: !!pumpResult, signature: pumpResult || undefined };
       } else if (tweet.mintAddress) {  
-        const result = await dexscreenerClient!.buyToken(tweet.mintAddress, buyAmount, slippage * 100);
-        if (!result.success) {
-          throw new Error(result.error);
-        }
-        signature = result.signature ?? undefined;
+        result = await dexscreenerClient!.buyToken(tweet.mintAddress, buyAmount);
       } else {
         throw new Error('No mint address found for token');
       }
       
-      if (signature) {  
-        setTxSignatures(prev => ({ ...prev, [tweet.id]: signature }));
+      if (result.success && result.signature) {  
+        setTxSignatures(prev => ({ ...prev, [tweet.id]: result.signature }));
         
-        // Update order status to success immediately
+        // Update order status to success
         if (pendingOrder) {
           updateOrder(pendingOrder.id, {
             status: 'success',
-            signature
+            signature: result.signature
           });
 
           // Remove successful order after 15 seconds
@@ -237,7 +245,7 @@ export default function TwitterFeed() {
           }, 15000);
         }
       } else {
-        throw new Error('Transaction failed');
+        throw new Error(result.error || 'Transaction failed');
       }
     } catch (error: any) {
       console.error('Autobuy error:', error);
@@ -592,13 +600,25 @@ export default function TwitterFeed() {
         keypair,
         undefined, // rpcEndpoint is optional
         {
+          autoBuyEnabled,
           followerCheckEnabled,
           minFollowers,
           creationTimeEnabled,
           maxCreationTime
         }
       );
-      const dexClient = new DexscreenerClient(connection, keypair);
+      const dexClient = new DexscreenerClient(
+        connection, 
+        keypair, 
+        undefined, // rpcEndpoint is optional
+        {
+          autoBuyEnabled,
+          followerCheckEnabled,
+          minFollowers,
+          creationTimeEnabled,
+          maxCreationTime
+        }
+      );
       
       setPumpFunClient(pumpClient);
       setDexscreenerClient(dexClient);

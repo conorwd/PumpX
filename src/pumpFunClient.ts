@@ -88,6 +88,11 @@ class PumpFunClient {
   private rpcEndpoint: string;
   private lastRequestId: number = 0;
   private tradingSettings: any;
+  private lastBuyTimestamp: number = 0;
+  private buyAttempts: Map<string, { timestamp: number, count: number }> = new Map();
+  private readonly MIN_BUY_INTERVAL = 2000; // 2 seconds between buys
+  private readonly MAX_BUY_ATTEMPTS = 3; // Maximum attempts per token within the window
+  private readonly BUY_ATTEMPT_WINDOW = 60000; // 1 minute window for attempts
 
   constructor(connection: Connection, payer: Keypair, rpcEndpoint?: string, tradingSettings?: any) {
     this.connection = connection;
@@ -349,28 +354,69 @@ class PumpFunClient {
   }
 
   public shouldBuyToken(coinData: any, twitterData: any): boolean {
-    const { followerCheckEnabled, minFollowers, creationTimeEnabled, maxCreationTime } = this.tradingSettings;
-
-    // Check follower count if enabled
-    if (followerCheckEnabled && twitterData) {
-      const followerCount = twitterData.public_metrics?.followers_count || 0;
-      if (followerCount < minFollowers) {
-        return false;
-      }
+    // If no trading settings exist, allow the buy (this is a manual buy)
+    if (!this.tradingSettings) {
+      return true;
     }
 
-    // Check creation time if enabled
-    if (creationTimeEnabled && coinData.created) {
-      const creationTime = new Date(coinData.created).getTime();
-      const currentTime = Date.now();
-      const minutesSinceCreation = (currentTime - creationTime) / (1000 * 60);
-      
-      if (minutesSinceCreation > maxCreationTime) {
-        return false;
-      }
+    // If this is a manual buy (no twitterData), allow it
+    if (!twitterData) {
+      return true;
     }
 
-    return true;
+    // From this point on, we're dealing with autobuy
+
+    // First check if autobuy is enabled
+    if (!this.tradingSettings.autoBuyEnabled) {
+      console.log('Autobuy is disabled');
+      return false;
+    }
+
+    // If both checks are turned off, no autobuys should happen
+    if (!this.tradingSettings.followerCheckEnabled && !this.tradingSettings.creationTimeEnabled) {
+      console.log('Both follower and age checks are disabled - no autobuys will occur');
+      return false;
+    }
+
+    let followerCheckPassed = false;
+    let ageCheckPassed = false;
+
+    // Check followers if enabled
+    if (this.tradingSettings.followerCheckEnabled) {
+      const followerCount = twitterData.user?.followers_count || 0;
+      followerCheckPassed = followerCount >= this.tradingSettings.minFollowers;
+      console.log(`Follower check ${followerCheckPassed ? 'passed' : 'failed'}: ${followerCount} ${followerCheckPassed ? '>=' : '<'} ${this.tradingSettings.minFollowers}`);
+    }
+
+    // Check age if enabled
+    if (this.tradingSettings.creationTimeEnabled && coinData.createdTimestamp) {
+      const tokenAge = (Date.now() / 1000) - coinData.createdTimestamp;
+      const maxAgeInSeconds = this.tradingSettings.maxCreationTime * 60;
+      ageCheckPassed = tokenAge <= maxAgeInSeconds;
+      console.log(`Age check ${ageCheckPassed ? 'passed' : 'failed'}: ${Math.round(tokenAge / 60)} minutes ${ageCheckPassed ? '<=' : '>'} ${this.tradingSettings.maxCreationTime}`);
+    }
+
+    // If both checks are enabled, both must pass
+    if (this.tradingSettings.followerCheckEnabled && this.tradingSettings.creationTimeEnabled) {
+      const shouldBuy = followerCheckPassed && ageCheckPassed;
+      console.log(`Both checks enabled: follower check ${followerCheckPassed}, age check ${ageCheckPassed} - ${shouldBuy ? 'buying' : 'not buying'}`);
+      return shouldBuy;
+    }
+
+    // If only follower check is enabled
+    if (this.tradingSettings.followerCheckEnabled) {
+      console.log(`Only follower check enabled: ${followerCheckPassed ? 'buying' : 'not buying'}`);
+      return followerCheckPassed;
+    }
+
+    // If only age check is enabled
+    if (this.tradingSettings.creationTimeEnabled) {
+      console.log(`Only age check enabled: ${ageCheckPassed ? 'buying' : 'not buying'}`);
+      return ageCheckPassed;
+    }
+
+    // This line should never be reached due to earlier checks
+    return false;
   }
 
   async buy(
@@ -450,6 +496,83 @@ class PumpFunClient {
     } catch (error) {
       console.error('Error in getTokenPrice:', error);
       return null;
+    }
+  }
+
+  public async autoBuy(
+    mintAddress: string,
+    twitterData: any = null
+  ): Promise<{ success: boolean; signature?: string; error?: string }> {
+    try {
+      // Check if enough time has passed since last buy
+      const now = Date.now();
+      if (now - this.lastBuyTimestamp < this.MIN_BUY_INTERVAL) {
+        return { 
+          success: false, 
+          error: 'Rate limit: Too soon since last buy attempt' 
+        };
+      }
+
+      // Check and update buy attempts for this token
+      const buyAttempt = this.buyAttempts.get(mintAddress) || { timestamp: 0, count: 0 };
+      if (now - buyAttempt.timestamp > this.BUY_ATTEMPT_WINDOW) {
+        // Reset if window has expired
+        buyAttempt.timestamp = now;
+        buyAttempt.count = 1;
+      } else if (buyAttempt.count >= this.MAX_BUY_ATTEMPTS) {
+        return { 
+          success: false, 
+          error: `Max buy attempts (${this.MAX_BUY_ATTEMPTS}) reached for this token` 
+        };
+      } else {
+        buyAttempt.count++;
+      }
+      this.buyAttempts.set(mintAddress, buyAttempt);
+
+      // Get coin data and check if it meets criteria
+      const coinData = await this.getCoinData(mintAddress);
+      if (!coinData) {
+        return { 
+          success: false, 
+          error: 'Failed to fetch coin data' 
+        };
+      }
+
+      if (!this.shouldBuyToken(coinData, twitterData)) {
+        return { 
+          success: false, 
+          error: 'Token does not meet buying criteria' 
+        };
+      }
+
+      // Update last buy timestamp before attempting purchase
+      this.lastBuyTimestamp = now;
+
+      // Attempt to buy using settings from trading context
+      const signature = await this.buy(
+        mintAddress,
+        this.tradingSettings.buyAmount,
+        this.tradingSettings.slippage
+      );
+
+      if (!signature) {
+        return { 
+          success: false, 
+          error: 'Buy transaction failed' 
+        };
+      }
+
+      return { 
+        success: true, 
+        signature 
+      };
+
+    } catch (error) {
+      console.error('Error in autoBuy:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error in autoBuy' 
+      };
     }
   }
 }

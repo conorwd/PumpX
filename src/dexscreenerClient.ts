@@ -1,17 +1,19 @@
 import {
   Connection,
   Keypair,
-  PublicKey,
   VersionedTransaction,
-  TransactionMessage,
-  AddressLookupTableAccount,
   LAMPORTS_PER_SOL,
-  ComputeBudgetProgram
+  PublicKey,
+  Transaction,
+  TransactionInstruction,
 } from '@solana/web3.js';
 import { AnchorProvider, Wallet } from '@project-serum/anchor';
-import bs58 from 'bs58';
 import fetch from 'cross-fetch';
-import { COMPUTE_UNIT_LIMIT, PRIORITY_RATE } from './constants';
+import axios from 'axios';
+
+const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
+const PRIORITY_RATE = 1_000_000; // Adjust this value if you need to set a priority fee
+const JUPITER_V6_API = 'https://quote-api.jup.ag/v6';
 
 interface SwapQuote {
   inputMint: string;
@@ -20,29 +22,64 @@ interface SwapQuote {
   slippageBps: number;
 }
 
-interface QuoteResponse {
+interface SwapInfo {
+  ammKey: string;
+  label: string;
   inputMint: string;
   outputMint: string;
-  inAmount: number;
-  outAmount: number;
-  otherAmountThreshold: number;
+  inAmount: string;
+  outAmount: string;
+  feeAmount: string;
+  feeMint: string;
+}
+
+interface RoutePlan {
+  swapInfo: SwapInfo;
+  percent: number;
+}
+
+interface Quote {
+  inputMint: string;
+  inAmount: string;
+  outputMint: string;
+  outAmount: string;
+  otherAmountThreshold: string;
   swapMode: string;
   slippageBps: number;
-  platformFee: null | {
-    amount: string;
-    feeBps: number;
-  };
-  priceImpactPct: number;
-  routePlan: Array<{
-    swapInfo: {
-      inputMint: string;
-      outputMint: string;
-      quoteMint: string;
-    };
-    percent: number;
-  }>;
+  platformFee: any;
+  priceImpactPct: string;
+  routePlan: RoutePlan[];
   contextSlot: number;
   timeTaken: number;
+}
+
+interface DexScreenerToken {
+  address: string;
+  name: string;
+  symbol: string;
+}
+
+interface DexScreenerPair {
+  chainId: string;
+  dexId: string;
+  url: string;
+  pairAddress: string;
+  baseToken: DexScreenerToken;
+  quoteToken: DexScreenerToken;
+  priceNative: string;
+  priceUsd: string;
+  txns: {
+    m5: { buys: number; sells: number };
+    h1: { buys: number; sells: number };
+    h6: { buys: number; sells: number };
+    h24: { buys: number; sells: number };
+  };
+  pairCreatedAt: number;
+}
+
+interface DexScreenerResponse {
+  pairs: DexScreenerPair[];
+  pair?: DexScreenerPair;
 }
 
 class DexscreenerClient {
@@ -50,213 +87,342 @@ class DexscreenerClient {
   private wallet: Keypair;
   private provider: AnchorProvider;
   private rpcEndpoint: string;
+  private tradingSettings: any;
 
-  constructor(connection: Connection, payer: Keypair, rpcEndpoint?: string) {
+  constructor(
+    connection: Connection,
+    wallet: Keypair,
+    rpcEndpoint?: string,
+    tradingSettings?: any
+  ) {
     this.connection = connection;
-    this.wallet = payer;
-    this.rpcEndpoint = rpcEndpoint || process.env.NEXT_PUBLIC_HELIUS_RPC_URL || '';
+    this.wallet = wallet;
+    this.rpcEndpoint =
+      rpcEndpoint || process.env.NEXT_PUBLIC_HELIUS_RPC_URL || '';
+    this.tradingSettings = tradingSettings;
 
     // Create a wallet adapter that implements the Wallet interface
     const walletAdapter: Wallet = {
-      publicKey: payer.publicKey,
-      signTransaction: async (tx: any) => {
-        tx.partialSign(payer);
+      publicKey: wallet.publicKey,
+      signTransaction: async (tx: Transaction | VersionedTransaction) => {
+        // Ensure proper signing for both Transaction and VersionedTransaction
+        if (tx instanceof VersionedTransaction) {
+          tx.sign([wallet]);
+        } else {
+          tx.partialSign(wallet);
+        }
         return tx;
       },
-      signAllTransactions: async (txs: any[]) => {
-        txs.forEach(tx => tx.partialSign(payer));
-        return txs;
+      signAllTransactions: async (
+        txs: (Transaction | VersionedTransaction)[]
+      ) => {
+        return Promise.all(
+          txs.map(async (tx) => {
+            if (tx instanceof VersionedTransaction) {
+              tx.sign([wallet]);
+            } else {
+              tx.partialSign(wallet);
+            }
+            return tx;
+          })
+        );
       },
-      payer: payer
+      payer: wallet,
     };
-    
-    // Initialize AnchorProvider with the wallet adapter
-    this.provider = new AnchorProvider(
-      connection,
-      walletAdapter,
-      { commitment: 'confirmed' }
-    );
+
+    // Initialize the provider with our wallet adapter
+    this.provider = new AnchorProvider(connection, walletAdapter, {
+      commitment: 'confirmed',
+      skipPreflight: false,
+    });
   }
 
-  public async getTokenPrice(mintAddress: string): Promise<number | undefined> {
+  private async getBaseTokenAddress(pairIdOrAddress: string): Promise<string> {
     try {
-      // First try to get price from DexScreener API
-      const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mintAddress}`);
-      const data = await response.json();
-      
+      // First try as a pair address
+      const response = await fetch(
+        `https://api.dexscreener.com/latest/dex/pairs/solana/${pairIdOrAddress}`
+      );
+      const data: DexScreenerResponse = await response.json();
+
+      // Check if we got a valid response with pairs
       if (data.pairs && data.pairs.length > 0) {
+        return data.pairs[0].baseToken.address;
+      }
+
+      // If no pairs found, try as a token address
+      const tokenResponse = await fetch(
+        `https://api.dexscreener.com/latest/dex/tokens/${pairIdOrAddress}`
+      );
+      const tokenData: DexScreenerResponse = await tokenResponse.json();
+
+      if (tokenData.pairs && tokenData.pairs.length > 0) {
         // Find the first Solana pair
-        const solanaPair = data.pairs.find((pair: any) => pair.chainId === 'solana');
-        if (solanaPair && solanaPair.priceUsd) {
-          return parseFloat(solanaPair.priceUsd);
+        const solanaPair = tokenData.pairs.find(
+          (pair) => pair.chainId === 'solana'
+        );
+        if (solanaPair) {
+          return solanaPair.baseToken.address;
         }
       }
 
-      // If no price found on DexScreener, try Jupiter
-      const quoteResponse = await this.getQuote({
-        inputMint: 'So11111111111111111111111111111111111111112', // SOL
-        outputMint: mintAddress,
-        amount: LAMPORTS_PER_SOL, // 1 SOL in lamports
-        slippageBps: 50
-      });
-
-      if (quoteResponse) {
-        // Return how many tokens you get for 1 SOL
-        return quoteResponse.outAmount / Math.pow(10, 9); // Assuming 9 decimals for token
-      }
-      
-      return undefined;
+      throw new Error(`Could not find base token address for ${pairIdOrAddress}`);
     } catch (error) {
-      console.error('Error fetching token price:', error);
-      return undefined;
-    }
-  }
-
-  private async getQuote(params: SwapQuote): Promise<QuoteResponse> {
-    const { inputMint, outputMint, amount, slippageBps } = params;
-    
-    try {
-      // First check if the token is indexed by Jupiter
-      const indexResponse = await fetch(`https://token.jup.ag/all`);
-      const indexData = await indexResponse.json();
-      
-      if (!indexData.tokens.some((token: any) => token.address === outputMint)) {
-        console.log(`Token ${outputMint} is not yet indexed by Jupiter`);
-        throw new Error(`Token ${outputMint} is not yet available for trading on Jupiter`);
-      }
-
-      console.log(`Fetching quote for ${amount} input tokens...`);
-      const response = await fetch(
-        `https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}\
-&outputMint=${outputMint}\
-&amount=${amount}\
-&slippageBps=${slippageBps}\
-&maxAccounts=54`
-      );
-      
-      const quoteResponse = await response.json();
-      console.log('Quote response:', quoteResponse);
-      
-      if (quoteResponse.error) {
-        throw new Error(`Failed to get quote: ${quoteResponse.error}`);
-      }
-
-      // Check if we have any routes
-      if (!quoteResponse.data || !quoteResponse.data.routePlan || quoteResponse.data.routePlan.length === 0) {
-        throw new Error(`No trading routes available for token ${outputMint}`);
-      }
-
-      return quoteResponse.data;
-    } catch (error: any) {
-      console.error('Error in getQuote:', error);
-      // Enhance error message for better debugging
-      if (error.message.includes('Failed to fetch')) {
-        throw new Error(`Jupiter API request failed. Please check your internet connection and try again.`);
-      }
+      console.error('Error getting base token address:', error);
       throw error;
     }
   }
 
-  public async buyToken(outputMint: string, solAmount: number, slippageBps: number = 100) {
+  public async getTokenPrice(
+    pairIdOrAddress: string
+  ): Promise<number | undefined> {
     try {
-      // Convert SOL amount to lamports
-      const amountInLamports = solAmount * LAMPORTS_PER_SOL;
+      // Get amount and slippage from trading settings
+      const amountInSol = this.tradingSettings?.amount || 0.1; // Default to 0.1 SOL if not set
+      const amountLamports = amountInSol * LAMPORTS_PER_SOL;
 
-      // 1. Get quote
-      const quoteResponse = await this.getQuote({
-        inputMint: 'So11111111111111111111111111111111111111112', // SOL mint address
-        outputMint,
-        amount: amountInLamports,
-        slippageBps
+      const slippageBps = this.tradingSettings?.slippage
+        ? Math.floor(this.tradingSettings.slippage * 100)
+        : 100; // Default to 1% if not set
+
+      console.log(
+        `Getting price quote for ${amountInSol} SOL with ${slippageBps} bps slippage`
+      );
+
+      const quote = await this.getQuote({
+        inputMint: WRAPPED_SOL_MINT,
+        outputMint: pairIdOrAddress,
+        amount: amountLamports,
+        slippageBps,
       });
 
-      // 2. Get swap transaction
-      const { swapTransaction } = await this.getSwapTransaction(quoteResponse);
-
-      // 3. Deserialize and sign the transaction
-      const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
-      const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
-
-      // Sign the transaction
-      transaction.sign([this.wallet]);
-
-      // 4. Execute the transaction
-      const latestBlockhash = await this.connection.getLatestBlockhash();
-      const rawTransaction = transaction.serialize();
-      const txid = await this.connection.sendRawTransaction(rawTransaction, {
-        skipPreflight: true,
-        maxRetries: 2
-      });
-
-      // Wait for confirmation
-      const confirmation = await this.connection.confirmTransaction({
-        blockhash: latestBlockhash.blockhash,
-        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-        signature: txid
-      });
-
-      if (confirmation.value.err) {
-        throw new Error(`Transaction failed: ${confirmation.value.err}`);
+      if (!quote || !quote.outAmount) {
+        console.log(`No quote available for token ${pairIdOrAddress}`);
+        return undefined;
       }
 
-      return {
-        success: true,
-        signature: txid,
-        explorerUrl: `https://solscan.io/tx/${txid}`
-      };
-    } catch (error: any) {
-      console.error('Error buying token:', error);
-      return {
-        success: false,
-        error: error.message
-      };
+      // Calculate price in SOL (outAmount will be in the token's smallest unit)
+      const outAmount = BigInt(quote.outAmount);
+      if (outAmount === 0n) {
+        console.log(
+          `Invalid outAmount from quote for token ${pairIdOrAddress}`
+        );
+        return undefined;
+      }
+
+      const priceInSol = Number(amountLamports) / Number(outAmount);
+      return priceInSol;
+    } catch (error) {
+      console.error('Error getting token price:', error);
+      return undefined;
     }
   }
 
-  private async getSwapTransaction(quoteResponse: QuoteResponse) {
-    const swapResponse = await fetch('https://quote-api.jup.ag/v6/swap', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
+  private async getQuote(params: SwapQuote): Promise<Quote> {
+    try {
+      const response = await axios.get(`${JUPITER_V6_API}/quote`, {
+        params: {
+          inputMint: params.inputMint,
+          outputMint: params.outputMint,
+          amount: params.amount,
+          slippageBps: params.slippageBps || 100,
+          onlyDirectRoutes: true
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error getting quote:', error);
+      throw error;
+    }
+  }
+
+  private async getSwapTransaction(quoteResponse: any): Promise<VersionedTransaction> {
+    try {
+      const response = await axios.post(`${JUPITER_V6_API}/swap`, {
         quoteResponse,
         userPublicKey: this.wallet.publicKey.toString(),
-        wrapAndUnwrapSol: true,
-        computeUnitPriceMicroLamports: PRIORITY_RATE,
+        wrapUnwrapSOL: true,
         dynamicComputeUnitLimit: true,
-        prioritizationFeeLamports: 'auto',
-        dynamicSlippage: { maxBps: 300 }
-      })
-    });
-
-    const swapData = await swapResponse.json();
-    if (swapData.error) {
-      throw new Error(`Failed to get swap transaction: ${swapData.error}`);
+        prioritizationFeeLamports: PRIORITY_RATE,
+      });
+      
+      const { swapTransaction } = response.data;
+      const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
+      return VersionedTransaction.deserialize(swapTransactionBuf);
+    } catch (error) {
+      console.error('Error getting swap transaction:', error);
+      throw error;
     }
-    return swapData;
   }
 
-  public async getTokenCreationTime(mintAddress: string): Promise<number | undefined> {
+  public async buyToken(
+    pairIdOrAddress: string,
+    amountInSol: number
+  ): Promise<{ success: boolean; signature?: string; error?: string }> {
     try {
-      // Try to get token info from DexScreener API
-      const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mintAddress}`);
-      const data = await response.json();
+      const baseTokenAddress = await this.getBaseTokenAddress(pairIdOrAddress);
+      if (!baseTokenAddress) {
+        return { success: false, error: 'Could not get base token address' };
+      }
+
+      const amountLamports = amountInSol * LAMPORTS_PER_SOL;
       
-      if (data.pairs && data.pairs.length > 0) {
-        // Find the first Solana pair
-        const solanaPair = data.pairs.find((pair: any) => pair.chainId === 'solana');
-        if (solanaPair && solanaPair.pairCreatedAt) {
-          // DexScreener returns timestamp in milliseconds, convert to seconds
-          return Math.floor(solanaPair.pairCreatedAt / 1000);
+      // Get quote
+      const quoteParams: SwapQuote = {
+        inputMint: WRAPPED_SOL_MINT,
+        outputMint: baseTokenAddress,
+        amount: amountLamports,
+        slippageBps: 100,
+      };
+
+      const quoteResponse = await this.getQuote(quoteParams);
+      if (!quoteResponse) {
+        return { success: false, error: 'Failed to get quote' };
+      }
+
+      // Get and execute swap transaction
+      const swapTransaction = await this.getSwapTransaction(quoteResponse);
+      if (!swapTransaction) {
+        return { success: false, error: 'Failed to get swap transaction' };
+      }
+
+      // Execute the transaction
+      const { success, signature, error } = await this.executeTransaction(swapTransaction);
+      
+      if (success && signature) {
+        console.log(`Buy transaction completed successfully with signature: ${signature}`);
+        return { success: true, signature };
+      } else {
+        console.error(`Buy transaction failed: ${error}`);
+        return { success: false, error: error || 'Transaction failed' };
+      }
+
+    } catch (error) {
+      console.error('Error in buyToken:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error occurred' 
+      };
+    }
+  }
+
+  private async executeTransaction(
+    transaction: VersionedTransaction
+  ): Promise<{ success: boolean; signature?: string; error?: string }> {
+    try {
+      // Get latest blockhash
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+      transaction.message.recentBlockhash = blockhash;
+
+      // Sign transaction
+      try {
+        transaction.sign([this.wallet]);
+      } catch (signError) {
+        if (!transaction.signatures.some(sig => sig.publicKey.equals(this.wallet.publicKey))) {
+          console.error('Transaction signing failed:', signError);
+          return { success: false, error: 'Transaction signing failed' };
         }
       }
-      
-      return undefined;
+
+      // Send transaction
+      const signature = await this.connection.sendRawTransaction(transaction.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+        maxRetries: 3,
+      });
+
+      console.log(`Transaction sent: ${signature}`);
+
+      // Confirm transaction
+      const confirmation = await this.connection.confirmTransaction({
+        signature,
+        blockhash,
+        lastValidBlockHeight,
+      }, 'confirmed');
+
+      if (confirmation.value.err) {
+        return { 
+          success: false, 
+          signature,
+          error: `Transaction failed: ${confirmation.value.err}` 
+        };
+      }
+
+      // Double check transaction status
+      const status = await this.connection.getSignatureStatus(signature);
+      if (status.value?.err) {
+        return { 
+          success: false, 
+          signature,
+          error: `Transaction failed: ${status.value.err}` 
+        };
+      }
+
+      return { success: true, signature };
     } catch (error) {
-      console.error('Error fetching token creation time:', error);
-      return undefined;
+      console.error('Transaction execution failed:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Transaction execution failed' 
+      };
     }
+  }
+
+  public async getTokenCreationTime(
+    mintAddress: string
+  ): Promise<number | null> {
+    // For now, return current time as we don't have a reliable way to get token creation time
+    // This can be enhanced later to fetch actual creation time from chain or other sources
+    return Math.floor(Date.now() / 1000);
+  }
+
+  public async shouldBuyToken(mintAddress: string): Promise<boolean> {
+    const {
+      autoBuyEnabled = false,
+      followerCheckEnabled = false,
+      minFollowers = 0,
+      creationTimeEnabled = false,
+      maxCreationTime = 60,
+    } = this.tradingSettings || {};
+
+    if (!autoBuyEnabled) {
+      console.log('Autobuying is disabled');
+      return false;
+    }
+
+    let creationTimeCheckPassed = true;
+
+    // Check creation time if enabled
+    if (creationTimeEnabled) {
+      const tokenCreationTime = await this.getTokenCreationTime(mintAddress);
+      if (!tokenCreationTime) {
+        console.log('Could not determine token creation time');
+        return false;
+      }
+
+      const currentTime = Math.floor(Date.now() / 1000);
+      const tokenAgeInMinutes = (currentTime - tokenCreationTime) / 60;
+
+      creationTimeCheckPassed = tokenAgeInMinutes <= maxCreationTime;
+      if (!creationTimeCheckPassed) {
+        console.log(
+          `Token age (${Math.round(
+            tokenAgeInMinutes
+          )} minutes) exceeds maximum allowed age (${maxCreationTime} minutes)`
+        );
+      }
+    }
+
+    // For DexScreener tokens, we don't have follower information
+    // So if follower check is enabled, we should not allow the buy
+    if (followerCheckEnabled) {
+      console.log(
+        'Follower check is enabled but not supported for DexScreener tokens'
+      );
+      return false;
+    }
+
+    return creationTimeCheckPassed;
   }
 }
 

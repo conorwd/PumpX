@@ -195,8 +195,8 @@ const TradingSettings: React.FC<TradingSettingsProps> = ({ isMobile }) => {
   const tabs = [
     { name: 'Trading', icon: CogIcon },
     { name: 'Lists', icon: UserGroupIcon },
+    { name: 'Holdings', icon: CurrencyDollarIcon  },
     { name: 'Wallet', icon: WalletIcon },
-    { name: 'Holdings', icon: CurrencyDollarIcon },
   ];
 
   return (
