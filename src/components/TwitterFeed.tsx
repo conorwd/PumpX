@@ -117,12 +117,12 @@ export default function TwitterFeed() {
       let result: { success: boolean; signature?: string; error?: string };
       
       if (tweet.source_type === 'pumpfun' && tweet.mintAddress) {  
-        const result = await pumpFunClient!.autoBuy(tweet.mintAddress, tweet);
-        if (!result.success) {
-          console.log('Skipping buy - PumpFun trading settings check failed:', result.error);
+        const buyResult = await pumpFunClient!.autoBuy(tweet.mintAddress, tweet);
+        if (!buyResult.success) {
+          console.log('Skipping buy - PumpFun trading settings check failed:', buyResult.error);
           return;
         }
-        result = { success: true, signature: result.signature };
+        result = { success: true, signature: buyResult.signature };
       } else if (tweet.mintAddress) {  
         result = await dexscreenerClient!.buyToken(tweet.mintAddress, buyAmount);
       } else {
