@@ -137,8 +137,8 @@ export default function TwitterFeed() {
       if (tweet.source_type === 'pumpfun' && tweet.mintAddress) {  
         // For manual buys, skip trading settings checks
         const buyResult = await pumpFunClient!.buy(tweet.mintAddress, buyAmount, slippage);
-        result = { success: !!buyResult, signature: buyResult || undefined };
-      } else if (tweet.source_type === 'dexscreener' && tweet.mintAddress) {  
+        result = buyResult;
+      } else if (tweet.mintAddress) {  
         result = await dexscreenerClient!.buyToken(tweet.mintAddress, buyAmount);
       } else {
         throw new Error('No mint address found for token');
@@ -146,14 +146,13 @@ export default function TwitterFeed() {
       
       if (result.success && result.signature) {  
         // Ensure signature is not undefined before setting
-        const txSignature = result.signature;
-        setTxSignatures(prev => ({ ...prev, [tweetKey]: txSignature }));
+        setTxSignatures(prev => ({ ...prev, [tweetKey]: result.signature! }));
         
         // Update order status to success
         if (pendingOrder) {
           updateOrder(pendingOrder.id, {
             status: 'success',
-            signature: txSignature
+            signature: result.signature!
           });
 
           // Remove successful order after 15 seconds
@@ -250,7 +249,7 @@ export default function TwitterFeed() {
       
       if (tweet.source_type === 'pumpfun' && tweet.mintAddress) {  
         const buyResult = await pumpFunClient!.buy(tweet.mintAddress, buyAmount, slippage);
-        result = { success: !!buyResult, signature: buyResult || undefined };
+        result = buyResult;
       } else if (tweet.mintAddress) {  
         result = await dexscreenerClient!.buyToken(tweet.mintAddress, buyAmount);
       } else {
@@ -264,13 +263,13 @@ export default function TwitterFeed() {
 
         // Ensure signature is not undefined before setting
         const signature = result.signature;
-        setTxSignatures(prev => ({ ...prev, [tweet.source_type + '_' + tweet.id]: signature }));
+        setTxSignatures(prev => ({ ...prev, [tweet.source_type + '_' + tweet.id]: signature! }));
         
         // Update order status to success
         if (pendingOrder) {
           updateOrder(pendingOrder.id, {
             status: 'success',
-            signature
+            signature: signature!
           });
 
           // Remove successful order after 15 seconds

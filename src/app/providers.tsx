@@ -15,6 +15,13 @@ export default function Providers({
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    const hasVisited = localStorage.getItem('hasVisited');
+    if (!hasVisited && typeof window !== 'undefined') {
+      localStorage.setItem('hasVisited', 'true');
+      window.location.reload();
+      return;
+    }
+
     setMounted(true);
     return () => {
       setMounted(false);

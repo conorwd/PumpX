@@ -7,14 +7,11 @@ import {
   LAMPORTS_PER_SOL,
   SystemProgram,
   sendAndConfirmTransaction as web3SendAndConfirmTransaction,
-  ComputeBudgetProgram
+  ComputeBudgetProgram,
+  VersionedTransaction,
+  TransactionMessage
 } from '@solana/web3.js';
-import {
-  TOKEN_PROGRAM_ID,
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  createAssociatedTokenAccountInstruction,
-  getAssociatedTokenAddressSync,
-} from '@solana/spl-token';
+import * as token from '@solana/spl-token';
 import BN from 'bn.js';
 import {
   PUMP_FUN_PROGRAM,
@@ -33,27 +30,21 @@ import {
 import axios from 'axios';
 import bs58 from 'bs58';
 
-// Common headers for all requests
-const COMMON_HEADERS = {
-  'accept': '*/*',
-  'accept-language': 'en-CA,en-GB;q=0.9,en-US;q=0.8,en;q=0.7',
-  'content-type': 'application/json',
-  'priority': 'u=1, i',
-  'sec-ch-ua': '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
-  'sec-ch-ua-mobile': '?0',
-  'sec-ch-ua-platform': '"Windows"',
-  'sec-fetch-dest': 'empty',
-  'sec-fetch-mode': 'cors',
-  'sec-fetch-site': 'cross-site',
-  'solana-client': 'js/1.0.0-maintenance',
-  'Referer': 'https://memesniper.fun/',
-  'Referrer-Policy': 'strict-origin-when-cross-origin'
-};
+const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
+const JUPITER_V6_API = 'https://quote-api.jup.ag/v6';
 
-// Define TOKEN_DECIMALS based on your token's decimal places
-const TOKEN_DECIMALS = 1_000_000; // If your token has 6 decimals
+interface SwapQuote {
+  inputMint: string;
+  outputMint: string;
+  amount: number;
+  slippageBps?: number;
+}
 
-// Types
+interface Quote {
+  outAmount: string;
+  [key: string]: any;
+}
+
 interface CoinData {
   mint: string;
   name: string;
@@ -70,7 +61,6 @@ interface CoinData {
   createdTimestamp: number;
 }
 
-// Error codes from IDL
 enum PumpFunError {
   NotAuthorized = 6000,
   AlreadyInitialized = 6001,
@@ -84,26 +74,21 @@ enum PumpFunError {
 
 class PumpFunClient {
   private connection: Connection;
-  private payer: Keypair;
+  private wallet: Keypair;
   private rpcEndpoint: string;
   private lastRequestId: number = 0;
   private tradingSettings: any;
   private lastBuyTimestamp: number = 0;
-  private buyAttempts: Map<string, { timestamp: number, count: number }> = new Map();
-  private readonly MIN_BUY_INTERVAL = 2000; // 2 seconds between buys
-  private readonly MAX_BUY_ATTEMPTS = 3; // Maximum attempts per token within the window
-  private readonly BUY_ATTEMPT_WINDOW = 60000; // 1 minute window for attempts
+  private buyAttempts: Map<string, { timestamp: number; count: number }> = new Map();
+  private readonly MIN_BUY_INTERVAL = 2000;
+  private readonly MAX_BUY_ATTEMPTS = 3;
+  private readonly BUY_ATTEMPT_WINDOW = 60000;
 
-  constructor(connection: Connection, payer: Keypair, rpcEndpoint?: string, tradingSettings?: any) {
+  constructor(connection: Connection, wallet: Keypair, rpcEndpoint?: string, tradingSettings?: any) {
     this.connection = connection;
-    this.payer = payer;
+    this.wallet = wallet;
     this.rpcEndpoint = rpcEndpoint || process.env.NEXT_PUBLIC_HELIUS_RPC_URL || '';
     this.tradingSettings = tradingSettings;
-  }
-
-  private getNextRequestId(): string {
-    this.lastRequestId++;
-    return this.lastRequestId.toString();
   }
 
   private async getCoinData(mintStr: string): Promise<CoinData | null> {
@@ -135,221 +120,256 @@ class PumpFunClient {
     }
   }
 
-  private async createBuyInstruction(
-    owner: PublicKey,
-    mint: PublicKey,
-    amount: number,
-    coinData: CoinData,
-    slippageDecimal: number
-  ): Promise<{ transaction: Transaction; tokenAccount: PublicKey }> {
-    // Get latest blockhash first
-    const blockhashResponse = await axios.post(this.rpcEndpoint, {
-      method: 'getLatestBlockhash',
-      jsonrpc: '2.0',
-      params: [{ commitment: 'confirmed' }],
-      id: this.getNextRequestId()
-    }, { headers: COMMON_HEADERS });
-
-    const blockhash = blockhashResponse.data.result.value.blockhash;
-    
-    const txBuilder = new Transaction();
-    txBuilder.recentBlockhash = blockhash;
-    txBuilder.feePayer = owner;
-
-    // Add compute budget instructions first
-    const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({ 
-      units: COMPUTE_UNIT_LIMIT
-    });
-    
-    const priorityFeeIx = ComputeBudgetProgram.setComputeUnitPrice({
-      microLamports: PRIORITY_RATE
-    });
-    
-    txBuilder.add(computeBudgetIx);
-    txBuilder.add(priorityFeeIx);
-
-    // Get or create token account
-    const tokenAccountAddress = getAssociatedTokenAddressSync(mint, owner, false);
-    const tokenAccountInfo = await this.connection.getAccountInfo(tokenAccountAddress);
-
-    if (!tokenAccountInfo) {
-      txBuilder.add(
-        createAssociatedTokenAccountInstruction(
-          owner,
-          tokenAccountAddress,
-          owner,
-          mint
-        )
-      );
-    }
-
-    // Calculate amounts
-    const solInLamports = amount * LAMPORTS_PER_SOL;
-    const tokenOut = Math.floor((solInLamports * coinData.virtualTokenReserves) / coinData.virtualSolReserves);
-    const maxSolCost = Math.floor(solInLamports * (1 + slippageDecimal));
-
-    // Create buy instruction with correct account ordering from IDL
-    const keys = [
-      { pubkey: GLOBAL, isSigner: false, isWritable: false },
-      { pubkey: FEE_RECIPIENT, isSigner: false, isWritable: true },
-      { pubkey: mint, isSigner: false, isWritable: false },
-      { pubkey: new PublicKey(coinData.bondingCurve), isSigner: false, isWritable: true },
-      { pubkey: new PublicKey(coinData.associatedBondingCurve), isSigner: false, isWritable: true },
-      { pubkey: tokenAccountAddress, isSigner: false, isWritable: true },
-      { pubkey: owner, isSigner: true, isWritable: true },
-      { pubkey: SYSTEM_PROGRAM, isSigner: false, isWritable: false },
-      { pubkey: TOKEN_PROGRAM, isSigner: false, isWritable: false },
-      { pubkey: RENT, isSigner: false, isWritable: false },
-      { pubkey: EVENT_AUTHORITY, isSigner: false, isWritable: false },
-      { pubkey: PUMP_FUN_PROGRAM, isSigner: false, isWritable: false }
-    ];
-
-    // Create instruction data with proper discriminator and amounts
-    const discriminator = Buffer.from([102, 6, 61, 18, 1, 218, 235, 234]); // buy instruction discriminator from Python
-    const data = Buffer.concat([
-      discriminator,
-      bufferFromUInt64(tokenOut),
-      bufferFromUInt64(maxSolCost)
-    ]);
-
-    const instruction = new TransactionInstruction({
-      keys,
-      programId: PUMP_FUN_PROGRAM,
-      data
-    });
-
-    txBuilder.add(instruction);
-
-    return { transaction: txBuilder, tokenAccount: tokenAccountAddress };
-  }
-
-  private async createSellInstruction(
-    owner: PublicKey,
-    mint: PublicKey,
-    percentage: number,  
-    coinData: CoinData,
-    slippageDecimal: number
-  ): Promise<{ transaction: Transaction; tokenAccount: PublicKey }> {
-    const blockhashResponse = await axios.post(this.rpcEndpoint, {
-      method: 'getLatestBlockhash',
-      jsonrpc: '2.0',
-      params: [{ commitment: 'confirmed' }],
-      id: this.getNextRequestId()
-    }, { headers: COMMON_HEADERS });
-
-    const blockhash = blockhashResponse.data.result.value.blockhash;
-    
-    const txBuilder = new Transaction();
-    txBuilder.recentBlockhash = blockhash;
-    txBuilder.feePayer = owner;
-
-    txBuilder.add(ComputeBudgetProgram.setComputeUnitLimit({ units: COMPUTE_UNIT_LIMIT }));
-    txBuilder.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: PRIORITY_RATE }));
-
-    const tokenAccountAddress = getAssociatedTokenAddressSync(mint, owner, false);
-
-    // Get token account info to get actual token balance
-    const tokenAccountInfo = await this.connection.getTokenAccountBalance(tokenAccountAddress);
-    if (!tokenAccountInfo?.value) {
-      throw new Error('Could not fetch token account balance');
-    }
-
-    // Calculate the actual token amount from the percentage using the real balance
-    const actualBalance = tokenAccountInfo.value.amount;
-    const amountInUnits = Math.floor((Number(actualBalance) * percentage) / 100);
-    
-    const expectedSolOutput = Math.floor(
-      (amountInUnits * coinData.virtualSolReserves) / coinData.virtualTokenReserves
-    );
-    const minSolOutput = Math.floor(expectedSolOutput * (1 - slippageDecimal));
-
-    // Create sell instruction with correct account ordering from IDL
-    const keys = [
-      { pubkey: GLOBAL, isSigner: false, isWritable: false },
-      { pubkey: FEE_RECIPIENT, isSigner: false, isWritable: true },
-      { pubkey: mint, isSigner: false, isWritable: false },
-      { pubkey: new PublicKey(coinData.bondingCurve), isSigner: false, isWritable: true },
-      { pubkey: new PublicKey(coinData.associatedBondingCurve), isSigner: false, isWritable: true },
-      { pubkey: tokenAccountAddress, isSigner: false, isWritable: true },
-      { pubkey: owner, isSigner: true, isWritable: true },
-      { pubkey: SYSTEM_PROGRAM, isSigner: false, isWritable: false },
-      { pubkey: ASSOCIATED_TOKEN_PROGRAM, isSigner: false, isWritable: false },
-      { pubkey: TOKEN_PROGRAM, isSigner: false, isWritable: false },
-      { pubkey: EVENT_AUTHORITY, isSigner: false, isWritable: false },
-      { pubkey: PUMP_FUN_PROGRAM, isSigner: false, isWritable: false }
-    ];
-
-    // Create instruction data with proper discriminator and amounts
-    const discriminator = Buffer.from([51, 230, 133, 164, 1, 127, 131, 173]); // sell instruction discriminator from Python
-    const data = Buffer.concat([
-      discriminator,
-      bufferFromUInt64(amountInUnits),
-      bufferFromUInt64(minSolOutput)
-    ]);
-
-    const instruction = new TransactionInstruction({
-      keys,
-      programId: PUMP_FUN_PROGRAM,
-      data
-    });
-
-    txBuilder.add(instruction);
-
-    return { transaction: txBuilder, tokenAccount: tokenAccountAddress };
-  }
-
-  async sendAndConfirmTransaction(transaction: Transaction): Promise<string> {
+  private async getQuote(params: SwapQuote): Promise<Quote> {
     try {
-      // Step 1: Get fresh blockhash and sign transaction
-      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
-      transaction.recentBlockhash = blockhash;
-      transaction.sign(this.payer);
-      
-      // Step 2: Send the transaction
-      const signature = await this.connection.sendTransaction(transaction, [this.payer], {
-        skipPreflight: false,
-        preflightCommitment: 'confirmed',
-        maxRetries: 3
+      const response = await axios.get(`${JUPITER_V6_API}/quote`, {
+        params: {
+          inputMint: params.inputMint,
+          outputMint: params.outputMint,
+          amount: params.amount,
+          slippageBps: params.slippageBps || 100,
+          onlyDirectRoutes: true
+        },
       });
+      return response.data;
+    } catch (error) {
+      console.error('Error getting quote:', error);
+      throw error;
+    }
+  }
 
-      // Step 3: Wait for confirmation with timeout
-      let done = false;
-      let status: any = null;
+  private async getSwapTransaction(quoteResponse: any): Promise<VersionedTransaction> {
+    try {
+      const response = await axios.post(`${JUPITER_V6_API}/swap`, {
+        quoteResponse,
+        userPublicKey: this.wallet.publicKey.toString(),
+        wrapUnwrapSOL: true,
+        dynamicComputeUnitLimit: true,
+        prioritizationFeeLamports: PRIORITY_RATE,
+      });
       
-      const startTime = Date.now();
-      while (!done && Date.now() - startTime < 30000) {
-        try {
-          status = await this.connection.getSignatureStatus(signature);
-          
-          if (status?.value) {
-            if (status.value.err) {
-              throw new Error(`Transaction failed: ${JSON.stringify(status.value.err)}`);
-            }
-            
-            if (status.value.confirmationStatus === 'confirmed' || status.value.confirmationStatus === 'finalized') {
-              done = true;
-              break;
-            }
-          }
-          
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        } catch (err) {
-          if (Date.now() - startTime > 30000) {
-            throw new Error('Transaction confirmation timeout');
-          }
-          console.warn('Retrying confirmation:', err);
-          await new Promise(resolve => setTimeout(resolve, 1000));
+      const { swapTransaction } = response.data;
+      const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
+      return VersionedTransaction.deserialize(swapTransactionBuf);
+    } catch (error) {
+      console.error('Error getting swap transaction:', error);
+      throw error;
+    }
+  }
+
+  private async executeTransaction(
+    transaction: VersionedTransaction
+  ): Promise<{ success: boolean; signature?: string; error?: string }> {
+    try {
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+      transaction.message.recentBlockhash = blockhash;
+
+      try {
+        transaction.sign([this.wallet]);
+      } catch (signError) {
+        const walletKey = this.wallet.publicKey.toBase58();
+        const isAlreadySigned = transaction.signatures.some((sig, index) => {
+          const key = transaction.message.staticAccountKeys[index]?.toBase58();
+          return key === walletKey && sig !== null;
+        });
+        
+        if (!isAlreadySigned) {
+          console.error('Transaction signing failed:', signError);
+          return { success: false, error: 'Transaction signing failed' };
         }
       }
 
-      if (!done) {
-        throw new Error('Transaction confirmation timeout');
+      const signature = await this.connection.sendRawTransaction(transaction.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+        maxRetries: 3,
+      });
+
+      console.log(`Transaction sent: ${signature}`);
+
+      const confirmation = await this.connection.confirmTransaction({
+        signature,
+        blockhash,
+        lastValidBlockHeight,
+      }, 'confirmed');
+
+      if (confirmation.value.err) {
+        return { 
+          success: false, 
+          signature,
+          error: `Transaction failed: ${confirmation.value.err}` 
+        };
       }
 
-      return signature;
+      const status = await this.connection.getSignatureStatus(signature);
+      if (status.value?.err) {
+        return { 
+          success: false, 
+          signature,
+          error: `Transaction failed: ${status.value.err}` 
+        };
+      }
+
+      return { success: true, signature };
     } catch (error) {
-      console.error('Error in transaction handling:', error);
-      throw error;
+      console.error('Transaction execution failed:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Transaction execution failed' 
+      };
+    }
+  }
+
+  public async buy(
+    mintAddress: string,
+    amountInSol: number,
+    slippage: number = 0.25
+  ): Promise<{ success: boolean; signature?: string; error?: string }> {
+    try {
+      const amountLamports = amountInSol * LAMPORTS_PER_SOL;
+      const slippageBps = Math.floor(slippage * 100);
+
+      console.log(`Getting quote for ${amountInSol} SOL with ${slippageBps} bps slippage`);
+
+      const quoteParams: SwapQuote = {
+        inputMint: WRAPPED_SOL_MINT,
+        outputMint: mintAddress,
+        amount: amountLamports,
+        slippageBps,
+      };
+
+      const quoteResponse = await this.getQuote(quoteParams);
+      if (!quoteResponse) {
+        return { success: false, error: 'Failed to get quote' };
+      }
+
+      const swapTransaction = await this.getSwapTransaction(quoteResponse);
+      if (!swapTransaction) {
+        return { success: false, error: 'Failed to get swap transaction' };
+      }
+
+      // Get the associated token account
+      const associatedTokenAccount = token.getAssociatedTokenAddressSync(
+        new PublicKey(mintAddress),
+        this.wallet.publicKey
+      );
+
+      // Check if the associated token account exists
+      const accountInfo = await this.connection.getAccountInfo(associatedTokenAccount);
+      
+      if (!accountInfo) {
+        // Create associated token account if it doesn't exist
+        const ataTransaction = new Transaction().add(
+          token.createAssociatedTokenAccountInstruction(
+            this.wallet.publicKey,
+            associatedTokenAccount,
+            this.wallet.publicKey,
+            new PublicKey(mintAddress)
+          )
+        );
+        
+        // Execute ATA creation first
+        const ataResult = await this.executeTransaction(
+          new VersionedTransaction(
+            new TransactionMessage({
+              payerKey: this.wallet.publicKey,
+              recentBlockhash: (await this.connection.getLatestBlockhash()).blockhash,
+              instructions: ataTransaction.instructions,
+            }).compileToV0Message()
+          )
+        );
+        
+        if (!ataResult.success) {
+          return { success: false, error: 'Failed to create token account' };
+        }
+      }
+
+      // Now execute the swap transaction
+      return await this.executeTransaction(swapTransaction);
+
+    } catch (error) {
+      console.error('Error in buy:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error occurred' 
+      };
+    }
+  }
+
+  public async sell(
+    mintAddress: string,
+    amountInTokens: number,
+    slippage: number = 0.25
+  ): Promise<{ success: boolean; signature?: string; error?: string }> {
+    try {
+      const slippageBps = Math.floor(slippage * 100);
+      const amountInSmallestUnit = amountInTokens * TOKEN_DECIMAL;
+
+      console.log(`Getting quote for ${amountInTokens} tokens with ${slippageBps} bps slippage`);
+
+      const quoteParams: SwapQuote = {
+        inputMint: mintAddress,
+        outputMint: WRAPPED_SOL_MINT,
+        amount: amountInSmallestUnit,
+        slippageBps,
+      };
+
+      const quoteResponse = await this.getQuote(quoteParams);
+      if (!quoteResponse) {
+        return { success: false, error: 'Failed to get quote' };
+      }
+
+      const swapTransaction = await this.getSwapTransaction(quoteResponse);
+      if (!swapTransaction) {
+        return { success: false, error: 'Failed to get swap transaction' };
+      }
+
+      return await this.executeTransaction(swapTransaction);
+
+    } catch (error) {
+      console.error('Error in sell:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error occurred' 
+      };
+    }
+  }
+
+  public async getTokenPrice(mintAddress: string): Promise<number | undefined> {
+    try {
+      const amountInSol = this.tradingSettings?.amount || 0.1;
+      const amountLamports = amountInSol * LAMPORTS_PER_SOL;
+      const slippageBps = this.tradingSettings?.slippage
+        ? Math.floor(this.tradingSettings.slippage * 100)
+        : 100;
+
+      console.log(
+        `Getting price quote for ${amountInSol} SOL with ${slippageBps} bps slippage`
+      );
+
+      const quote = await this.getQuote({
+        inputMint: WRAPPED_SOL_MINT,
+        outputMint: mintAddress,
+        amount: amountLamports,
+        slippageBps,
+      });
+
+      if (!quote || !quote.outAmount) {
+        console.log(`No quote available for token ${mintAddress}`);
+        return undefined;
+      }
+
+      const outAmount = BigInt(quote.outAmount);
+      if (outAmount === 0n) {
+        console.log(`Invalid outAmount from quote for token ${mintAddress}`);
+        return undefined;
+      }
+
+      const priceInSol = Number(amountLamports) / Number(outAmount);
+      return priceInSol;
+    } catch (error) {
+      console.error('Error getting token price:', error);
+      return undefined;
     }
   }
 
@@ -419,86 +439,6 @@ class PumpFunClient {
     return false;
   }
 
-  async buy(
-    mintAddress: string,
-    amountInSol: number,
-    slippage: number = 0.25 // 25% default slippage
-  ): Promise<string | null> {
-    try {
-      const slippageDecimal = slippage / 100;
-      const coinData = await this.getCoinData(mintAddress);
-      if (!coinData) {
-        throw new Error("Failed to fetch coin data");
-      }
-
-      if (!this.shouldBuyToken(coinData, null)) {
-        console.log('Skipping buy due to trading settings');
-        return null;
-      }
-
-      const { transaction } = await this.createBuyInstruction(
-        this.payer.publicKey,
-        new PublicKey(mintAddress),
-        amountInSol,
-        coinData,
-        slippageDecimal
-      );
-
-      return await this.sendAndConfirmTransaction(transaction);
-    } catch (error) {
-      console.error('Error in buy transaction:', error);
-      throw error;
-    }
-  }
-
-  async sell(
-    mintAddress: string,
-    percentage: number,
-    slippagePercent: number = 25
-  ): Promise<string | null> {
-    try {
-      const slippageDecimal = slippagePercent / 100;
-      const coinData = await this.getCoinData(mintAddress);
-      if (!coinData) {
-        throw new Error("Failed to retrieve coin data");
-      }
-
-      const { transaction } = await this.createSellInstruction(
-        this.payer.publicKey,
-        new PublicKey(mintAddress),
-        percentage,
-        coinData,
-        slippageDecimal
-      );
-
-      return await this.sendAndConfirmTransaction(transaction);
-    } catch (error) {
-      console.error('Error in sell transaction:', error);
-      return null;
-    }
-  }
-
-  public async getTokenPrice(mint: string): Promise<number | null> {
-    try {
-      const coinData = await this.getCoinData(mint);
-      if (!coinData) {
-        throw new Error('Failed to fetch coin data');
-      }
-
-      if (coinData.virtualTokenReserves === 0) return 0;
-      
-      // Convert total supply to proper decimal value (divide by 10^6 for 6 decimal tokens)
-      const adjustedTotalSupply = coinData.tokenTotalSupply / TOKEN_DECIMALS;
-      
-      // Calculate USD price per token
-      const usdPrice = coinData.usdMarketCap / adjustedTotalSupply;
-      return usdPrice;
-    } catch (error) {
-      console.error('Error in getTokenPrice:', error);
-      return null;
-    }
-  }
-
   public async autoBuy(
     mintAddress: string,
     twitterData: any = null
@@ -549,22 +489,22 @@ class PumpFunClient {
       this.lastBuyTimestamp = now;
 
       // Attempt to buy using settings from trading context
-      const signature = await this.buy(
+      const result = await this.buy(
         mintAddress,
         this.tradingSettings.buyAmount,
         this.tradingSettings.slippage
       );
 
-      if (!signature) {
+      if (!result.success || !result.signature) {
         return { 
           success: false, 
-          error: 'Buy transaction failed' 
+          error: result.error || 'Buy transaction failed' 
         };
       }
 
       return { 
         success: true, 
-        signature 
+        signature: result.signature 
       };
 
     } catch (error) {
