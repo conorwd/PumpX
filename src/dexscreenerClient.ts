@@ -12,7 +12,7 @@ import fetch from 'cross-fetch';
 import axios from 'axios';
 
 const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
-const PRIORITY_RATE = 10_000; // Adjust this value if you need to set a priority fee
+const PRIORITY_RATE = 100_000; // Adjust this value if you need to set a priority fee
 const JUPITER_V6_API = 'https://quote-api.jup.ag/v6';
 
 interface SwapQuote {

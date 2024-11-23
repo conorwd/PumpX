@@ -20,8 +20,8 @@ export const TOKEN_DECIMAL = 1_000_000;     // 10^6
 
 // Transaction Settings
 export const COMPUTE_UNIT_LIMIT = 200_000;
-export const COMPUTE_UNIT_PRICE = 10;
-export const PRIORITY_RATE = 10_000; // 10 LAMPORTS per CU for better priority
+export const COMPUTE_UNIT_PRICE = 100;
+export const PRIORITY_RATE = 100_000; // 10 LAMPORTS per CU for better priority
 
 // Create the compute budget instruction
 export const COMPUTE_BUDGET_IX = ComputeBudgetProgram.setComputeUnitLimit({
