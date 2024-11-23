@@ -8,7 +8,7 @@ import { Analytics } from "@vercel/analytics/react"
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'SocialSnipe.Fun',
+  title: 'MemeSniper.Fun',
   description: 'Solana Social Based Token Sniper',
   icons: {
     icon: [

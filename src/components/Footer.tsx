@@ -6,11 +6,11 @@ export default function Footer() {
       <div className="container mx-auto px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="text-sm text-gray-400">
-            {new Date().getFullYear()} socialsnipe.fun. All rights reserved.
+            {new Date().getFullYear()} memesniper.fun. All rights reserved.
           </div>
           <div className="flex items-center space-x-4">
             <a
-              href="https://x.com/SocialSnipeSol"
+              href="https://x.com/memesnipersol"
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-400 hover:text-gray-300 transition-colors"

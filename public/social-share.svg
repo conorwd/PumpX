@@ -15,7 +15,7 @@
     <!-- Text Content -->
     <g transform="translate(100,20)">
       <!-- Title -->
-      <text x="0" y="0" font-family="system-ui" font-size="48" font-weight="600" fill="white">socialsnipe.fun</text>
+      <text x="0" y="0" font-family="system-ui" font-size="48" font-weight="600" fill="white">memesniper.fun</text>
       
       <!-- Subtitle -->
       <text x="0" y="50" font-family="system-ui" font-size="32" fill="#6B7280">Solana Token Trading Bot</text>

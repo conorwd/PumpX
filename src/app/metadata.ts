@@ -1,22 +1,22 @@
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'socialsnipe.fun',
+  title: 'memesniper.fun',
   description: 'Solana Token Trading Bot - Real-time token monitoring and auto-buy capabilities',
   icons: {
     icon: [{ url: '🔫', type: 'image/svg+xml' }],
   },
   openGraph: {
-    title: 'socialsnipe.fun',
+    title: 'MemeSniper.fun',
     description: 'Solana Token Trading Bot - Real-time token monitoring and auto-buy capabilities',
-    url: 'https://socialsnipe.fun',
-    siteName: 'socialsnipe.fun',
+    url: 'https://memesniper.fun',
+    siteName: 'memesniper.fun',
     images: [
       {
-        url: 'https://socialsnipe.fun/social-share.svg',
+        url: 'https://memesniper.fun/social-share.svg',
         width: 1200,
         height: 630,
-        alt: 'socialsnipe.fun - Solana Token Trading Bot',
+        alt: 'memesniper.fun - Solana Token Trading Bot',
       },
     ],
     locale: 'en_US',
@@ -24,9 +24,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'socialsnipe.fun',
+    title: 'memesniper.fun',
     description: 'Solana Token Trading Bot - Real-time token monitoring and auto-buy capabilities',
     creator: '@SocialSnipeSol',
-    images: ['https://socialsnipe.fun/social-share.svg'],
+    images: ['https://memesniper.fun/social-share.svg'],
   },
 };
