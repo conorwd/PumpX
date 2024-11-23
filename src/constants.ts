@@ -19,9 +19,9 @@ export const SOL_DECIMAL = 1_000_000_000;  // 10^9
 export const TOKEN_DECIMAL = 1_000_000;     // 10^6
 
 // Transaction Settings
-export const COMPUTE_UNIT_LIMIT = 1_000_000;
-export const COMPUTE_UNIT_PRICE = 1000;
-export const PRIORITY_RATE = 2_500_000; // 10 LAMPORTS per CU for better priority
+export const COMPUTE_UNIT_LIMIT = 200_000;
+export const COMPUTE_UNIT_PRICE = 10;
+export const PRIORITY_RATE = 10_000; // 10 LAMPORTS per CU for better priority
 
 // Create the compute budget instruction
 export const COMPUTE_BUDGET_IX = ComputeBudgetProgram.setComputeUnitLimit({
@@ -43,7 +43,7 @@ export const RPC_WEBSOCKET_ENDPOINT = RPC_ENDPOINT.replace('https://', 'wss://')
 // Jito Settings
 export const JITO_TIP_PROGRAM_ID = new PublicKey('4P1KYhBSn7RMGG5pYjvKmzGQPRXHBeCkFGfgVzVwGfXg');
 export const JITO_TIP_ACCOUNT = new PublicKey('GZctHpWXmsZC1YHACTGGcHhYxjdRqQvTpYkb9LMvxDib');
-export const JITO_FEE = 10000; // 0.00001 SOL
+export const JITO_FEE = 1000; // 0.00001 SOL
 
 // Create JitoTip instruction
 export const JITO_TIP_IX = new TransactionInstruction({
