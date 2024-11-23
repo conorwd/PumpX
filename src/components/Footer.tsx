@@ -20,7 +20,7 @@ export default function Footer() {
               </svg>
             </a>
             <a
-              href="https://t.me/pumpfunbot"
+              href=""
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-400 hover:text-yellow-500 transition-colors"
