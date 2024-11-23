@@ -73,6 +73,8 @@ export default function TwitterFeed() {
     new Set(['pumpfun', 'dexscreener'])
   );
   const [searchTerm, setSearchTerm] = useState('');
+  const [minDisplayFollowers, setMinDisplayFollowers] = useState(0);
+  const [isFollowerFilterActive, setIsFollowerFilterActive] = useState(false);
   const [autoBuyEnabledTimestamp, setAutoBuyEnabledTimestamp] = useState<number | null>(null);
   const [tokenInfoCache, setTokenInfoCache] = useState<{ [key: string]: TokenInfo }>({});
   const [processedTweets] = useState<Set<string>>(() => new Set());
@@ -138,7 +140,7 @@ export default function TwitterFeed() {
         // For manual buys, skip trading settings checks
         const buyResult = await pumpFunClient!.buy(tweet.mintAddress, buyAmount, slippage);
         result = buyResult;
-      } else if (tweet.mintAddress) {  
+      } else if (tweet.source_type === 'dexscreener' && tweet.mintAddress) {
         result = await dexscreenerClient!.buyToken(tweet.mintAddress, buyAmount);
       } else {
         throw new Error('No mint address found for token');
@@ -877,16 +879,21 @@ export default function TwitterFeed() {
     
     const matchesType = activeSourceTypes.has(tweet.source_type);
     
-    if (!matchesSearch || !matchesType) {
+    const meetsFollowerRequirement = !isFollowerFilterActive || tweet.user.followers_count >= minDisplayFollowers;
+
+    if (!matchesSearch || !matchesType || !meetsFollowerRequirement) {
       console.log(`Tweet ${tweet.id} filtered out:`, {
         matchesSearch,
         matchesType,
+        meetsFollowerRequirement,
         activeSourceTypes: Array.from(activeSourceTypes),
-        tweetType: tweet.source_type
+        tweetType: tweet.source_type,
+        followers: tweet.user.followers_count,
+        minRequired: isFollowerFilterActive ? minDisplayFollowers : 'disabled'
       });
     }
     
-    return matchesSearch && matchesType;
+    return matchesSearch && matchesType && meetsFollowerRequirement;
   });
 
   const getTweetUrl = (tweet: LocalTweet) => {
@@ -915,6 +922,13 @@ export default function TwitterFeed() {
       }
       return newSet;
     });
+  };
+
+  const toggleFollowerFilter = () => {
+    setIsFollowerFilterActive(!isFollowerFilterActive);
+    if (!isFollowerFilterActive) {
+      setMinDisplayFollowers(0);
+    }
   };
 
   if (!isMounted) {
@@ -954,6 +968,40 @@ export default function TwitterFeed() {
                 {label}
               </button>
             ))}
+          </div>
+          <div className="flex items-center">
+            <button
+              onClick={toggleFollowerFilter}
+              className={`
+                flex items-center px-2 py-1 rounded text-sm transition-all mr-2
+                ${isFollowerFilterActive
+                  ? 'bg-purple-500/10 text-purple-400 hover:bg-purple-500/20'
+                  : 'bg-gray-700 text-gray-300 opacity-50 hover:opacity-80'
+                }
+              `}
+            >
+              <svg className="w-4 h-4 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
+              </svg>
+              <span>Follower Filter</span>
+            </button>
+            {isFollowerFilterActive && (
+              <div className="relative inline-flex items-center">
+                <input
+                  type="number"
+                  min="0"
+                  value={minDisplayFollowers}
+                  onChange={(e) => setMinDisplayFollowers(Math.max(0, parseInt(e.target.value) || 0))}
+                  placeholder="Min followers"
+                  className="w-24 px-2 py-1 text-sm bg-gray-800 border border-gray-600 rounded text-gray-300 placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                />
+                {minDisplayFollowers > 0 && (
+                  <div className="absolute -top-5 left-0 right-0 text-center text-xs text-purple-400 whitespace-nowrap">
+                    {formatFollowerCount(minDisplayFollowers)}+ followers
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
