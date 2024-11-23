@@ -49,8 +49,6 @@ export default function TwitterFeed() {
   const { blacklistedUsers, addToBlacklist, isBlacklisted } = useBlacklistContext();
   const { isBuylisted } = useBuylistContext();
   const [tweets, setTweets] = useState<LocalTweet[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isMounted, setIsMounted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
@@ -61,6 +59,8 @@ export default function TwitterFeed() {
   const [dexscreenerClient, setDexscreenerClient] = useState<DexscreenerClient | null>(null);
   const [lastTweetId, setLastTweetId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const [isMounted, setIsMounted] = useState(false);
+  
   const [purchasedMints, setPurchasedMints] = useState<Set<string>>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('pumpfun_purchased_mints');
@@ -68,6 +68,7 @@ export default function TwitterFeed() {
     }
     return new Set();
   });
+
   const [activeSourceTypes, setActiveSourceTypes] = useState<Set<string>>(
     new Set(['pumpfun', 'dexscreener'])
   );
@@ -86,10 +87,6 @@ export default function TwitterFeed() {
   useEffect(() => {
     setIsMounted(true);
   }, []);
-
-  if (!isMounted) {
-    return null; // or return a loading spinner
-  }
 
   const sourceTypes = [
     { 
@@ -920,6 +917,12 @@ export default function TwitterFeed() {
       return newSet;
     });
   };
+
+  if (!isMounted) {
+    return <div className="flex items-center justify-center min-h-screen">
+      <div className="animate-pulse text-gray-500">Loading...</div>
+    </div>;
+  }
 
   return (
     <div className="h-full flex flex-col">
