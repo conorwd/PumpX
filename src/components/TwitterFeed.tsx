@@ -84,7 +84,7 @@ export default function TwitterFeed() {
   const sourceTypes = [
     { 
       type: 'pumpfun', 
-      label: 'socialsnipe.fun', 
+      label: 'pump.fun', 
       activeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
       dotClass: 'bg-blue-500'
     },
@@ -881,7 +881,7 @@ export default function TwitterFeed() {
 
   const getPumpFunUrl = (tweet: LocalTweet): string => {
     if (!tweet.mintAddress) return 'https://socialsnipe.fun';
-    return `https://socialsnipe.fun/coin/${tweet.mintAddress}`;
+    return `https://pump.fun/coin/${tweet.mintAddress}`;
   };
 
   const toggleSourceType = (type: string) => {
