@@ -822,18 +822,32 @@ export default function TwitterFeed() {
 
     // Load initial cached tweets
     const loadInitialTweets = async () => {
-      const pumpfunTweets = twitterService.getCachedTweets('pumpfun');
-      const dexscreenerTweets = twitterService.getCachedTweets('dexscreener');
-      
-      if (pumpfunTweets.length > 0) {
-        await handleNewTweets(pumpfunTweets, 'pumpfun', true);  // true = initial load
-      }
-      if (dexscreenerTweets.length > 0) {
-        await handleNewTweets(dexscreenerTweets, 'dexscreener', true);  // true = initial load
+      setLoading(true);
+      try {
+        const pumpfunTweets = twitterService.getCachedTweets('pumpfun');
+        const dexscreenerTweets = twitterService.getCachedTweets('dexscreener');
+        
+        if (pumpfunTweets.length > 0) {
+          await handleNewTweets(pumpfunTweets, 'pumpfun', true);  // true = initial load
+        }
+        if (dexscreenerTweets.length > 0) {
+          await handleNewTweets(dexscreenerTweets, 'dexscreener', true);  // true = initial load
+        }
+
+        // Force a reconnection to ensure we get fresh data
+        twitterService.reconnect();
+      } catch (error) {
+        console.error('Error loading initial tweets:', error);
+        setError('Failed to load initial tweets');
+      } finally {
+        setLoading(false);
       }
     };
 
-    loadInitialTweets();
+    // Delay the initial load slightly to ensure proper hydration
+    const timer = setTimeout(() => {
+      loadInitialTweets();
+    }, 100);
 
     // Update prices periodically
     const priceInterval = setInterval(updateTweetPrices, 30000);
@@ -841,8 +855,9 @@ export default function TwitterFeed() {
     return () => {
       cleanup();
       clearInterval(priceInterval);
+      clearTimeout(timer);
     };
-  }, [isPaused]);
+  }, []);
 
   const filteredTweets = tweets.filter(tweet => {
     if (!tweet) {

@@ -289,6 +289,15 @@ export class TwitterService {
       dexscreener: []
     };
   }
+
+  public reconnect() {
+    console.log('Forcing reconnection to tweet stream...');
+    if (this.ws) {
+      this.ws.close();
+    }
+    this.reconnectAttempts = 0;
+    this.connect();
+  }
 }
 
 // Export singleton instance
