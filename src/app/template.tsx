@@ -1,6 +1,6 @@
 export const metadata = {
-  title: 'Pump Fun Bot',
-  description: 'Automated trading bot for Solana',
+  title: 'SocialSniper.fun',
+  description: 'Automated Solana token trading platform',
 };
 
 export default function Template({ children }: { children: React.ReactNode }) {

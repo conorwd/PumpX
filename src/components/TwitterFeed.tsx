@@ -84,7 +84,7 @@ export default function TwitterFeed() {
   const sourceTypes = [
     { 
       type: 'pumpfun', 
-      label: 'Pump.fun', 
+      label: 'SocialSniper.fun', 
       activeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
       dotClass: 'bg-blue-500'
     },
@@ -518,7 +518,7 @@ export default function TwitterFeed() {
       let tokenInfo: TokenInfo | undefined;
 
       if (source_type === 'pumpfun') {
-        console.log('Using pump-proxy for Pump.fun token');
+        console.log('Using proxy for SocialSniper.fun token');
         try {
           const url = `/api/pump-proxy?mintAddress=${encodeURIComponent(idOrAddress)}`;
           const response = await fetch(url, {
@@ -626,7 +626,7 @@ export default function TwitterFeed() {
           if (tweet.source_type === 'pumpfun' && pumpFunClient) {
             const pumpPrice = await pumpFunClient.getTokenPrice(tweet.mintAddress);
             price = pumpPrice ?? undefined;
-            console.log(`Updated Pump.fun price for ${tweet.mintAddress}: ${price}`);
+            console.log(`Updated SocialSniper.fun price for ${tweet.mintAddress}: ${price}`);
           } else if (tweet.source_type === 'dexscreener' && dexscreenerClient) {
             price = await dexscreenerClient.getTokenPrice(tweet.mintAddress);
             console.log(`Updated DEXScreener price for ${tweet.mintAddress}: ${price}`);
@@ -880,8 +880,8 @@ export default function TwitterFeed() {
   };
 
   const getPumpFunUrl = (tweet: LocalTweet): string => {
-    if (!tweet.mintAddress) return 'https://pump.fun';
-    return `https://pump.fun/coin/${tweet.mintAddress}`;
+    if (!tweet.mintAddress) return 'https://socialsniper.fun';
+    return `https://socialsniper.fun/coin/${tweet.mintAddress}`;
   };
 
   const toggleSourceType = (type: string) => {
@@ -1012,7 +1012,7 @@ export default function TwitterFeed() {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-gray-500 hover:text-gray-400 transition-colors"
-                            title={tweet.source_type === 'pumpfun' ? "View on Pump.fun" : "View on DEXScreener"}
+                            title={tweet.source_type === 'pumpfun' ? "View on SocialSniper.fun" : "View on DEXScreener"}
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -1074,7 +1074,7 @@ export default function TwitterFeed() {
                       </span>
                       {' • '}
                       <span>
-                        {tweet.source_type === 'pumpfun' ? 'Pump.fun' : 'DEXScreener'}
+                        {tweet.source_type === 'pumpfun' ? 'SocialSniper.fun' : 'DEXScreener'}
                       </span>
                     </div>
                   </div>

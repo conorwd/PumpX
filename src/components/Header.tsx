@@ -24,7 +24,7 @@ export default function Header() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
-                <span className="text-xl font-bold text-white">Pump Fun Bot</span>
+                <span className="text-xl font-bold text-white">SocialSniper.fun</span>
                 <span className="px-2 py-1 text-xs font-medium bg-yellow-500/10 text-yellow-500 rounded-full">
                   Beta
                 </span>

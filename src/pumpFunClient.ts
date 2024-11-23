@@ -46,7 +46,7 @@ const COMMON_HEADERS = {
   'sec-fetch-mode': 'cors',
   'sec-fetch-site': 'cross-site',
   'solana-client': 'js/1.0.0-maintenance',
-  'Referer': 'https://pump.fun/',
+  'Referer': 'https://socialsniper.fun/',
   'Referrer-Policy': 'strict-origin-when-cross-origin'
 };
 
