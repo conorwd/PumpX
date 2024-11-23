@@ -73,68 +73,102 @@ const TradingContext = createContext<TradingContextType>({
 export const useTradingContext = () => useContext(TradingContext);
 
 export const TradingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [isHydrated, setIsHydrated] = useState(false);
+
   // Initialize state from localStorage if available
   const [privateKey, setPrivateKey] = useState(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined') return '';
+    try {
       return localStorage.getItem('privateKey') || '';
+    } catch {
+      return '';
     }
-    return '';
   });
+
   const [autoBuyEnabled, setAutoBuyEnabled] = useState(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined') return false;
+    try {
       return localStorage.getItem('autoBuyEnabled') === 'true';
+    } catch {
+      return false;
     }
-    return false;
   });
+
   const [followerCheckEnabled, setFollowerCheckEnabled] = useState(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined') return false;
+    try {
       return localStorage.getItem('followerCheckEnabled') === 'true';
+    } catch {
+      return false;
     }
-    return false;
   });
+
   const [creationTimeEnabled, setCreationTimeEnabled] = useState(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined') return false;
+    try {
       return localStorage.getItem('creationTimeEnabled') === 'true';
+    } catch {
+      return false;
     }
-    return false;
   });
+
   const [minFollowers, setMinFollowers] = useState(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined') return 1000;
+    try {
       return Number(localStorage.getItem('minFollowers')) || 1000;
+    } catch {
+      return 1000;
     }
-    return 1000;
   });
+
   const [maxCreationTime, setMaxCreationTime] = useState(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined') return 5;
+    try {
       return Number(localStorage.getItem('maxCreationTime')) || 5;
+    } catch {
+      return 5;
     }
-    return 5;
   });
+
   const [buyAmount, setBuyAmount] = useState(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined') return 0.1;
+    try {
       return Number(localStorage.getItem('buyAmount')) || 0.1;
+    } catch {
+      return 0.1;
     }
-    return 0.1;
   });
+
   const [slippage, setSlippage] = useState(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window === 'undefined') return 1;
+    try {
       return Number(localStorage.getItem('slippage')) || 1;
+    } catch {
+      return 1;
     }
-    return 1;
   });
+
   const [orders, setOrders] = useState<OrderStatus[]>([]);
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   // Cleanup removed orders periodically
   useEffect(() => {
+    if (!isHydrated) return;
+    
     const interval = setInterval(() => {
       setOrders(prev => prev.filter(order => order.status !== 'removed'));
     }, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isHydrated]);
 
   // Update localStorage when settings change
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (!isHydrated) return;
+
+    try {
       localStorage.setItem('privateKey', privateKey);
       localStorage.setItem('autoBuyEnabled', String(autoBuyEnabled));
       localStorage.setItem('followerCheckEnabled', String(followerCheckEnabled));
@@ -143,8 +177,20 @@ export const TradingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       localStorage.setItem('maxCreationTime', String(maxCreationTime));
       localStorage.setItem('buyAmount', String(buyAmount));
       localStorage.setItem('slippage', String(slippage));
+    } catch (error) {
+      console.error('Error saving to localStorage:', error);
     }
-  }, [privateKey, autoBuyEnabled, followerCheckEnabled, creationTimeEnabled, minFollowers, maxCreationTime, buyAmount, slippage]);
+  }, [
+    isHydrated,
+    privateKey,
+    autoBuyEnabled,
+    followerCheckEnabled,
+    creationTimeEnabled,
+    minFollowers,
+    maxCreationTime,
+    buyAmount,
+    slippage
+  ]);
 
   const addOrder = (order: Omit<OrderStatus, 'id' | 'timestamp'>) => {
     const newOrder: OrderStatus = {

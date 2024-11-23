@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useState, useEffect } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { TradingProvider } from '../contexts/TradingContext';
 import { BlacklistProvider } from '../contexts/BlacklistContext';
 import { BuylistProvider } from '../contexts/BuylistContext';
@@ -16,14 +16,25 @@ export default function Providers({
 
   useEffect(() => {
     setMounted(true);
+    return () => {
+      setMounted(false);
+    };
   }, []);
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="animate-pulse text-gray-400">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <WalletProvider>
       <TradingProvider>
         <BlacklistProvider>
           <BuylistProvider>
-            {mounted ? children : null}
+            {children}
             <Toaster position="bottom-right" />
           </BuylistProvider>
         </BlacklistProvider>

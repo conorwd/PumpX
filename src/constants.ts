@@ -19,7 +19,7 @@ export const SOL_DECIMAL = 1_000_000_000;  // 10^9
 export const TOKEN_DECIMAL = 1_000_000;     // 10^6
 
 // Transaction Settings
-export const COMPUTE_UNIT_LIMIT = 200_000;
+export const COMPUTE_UNIT_LIMIT = 400_000;
 export const COMPUTE_UNIT_PRICE = 100;
 export const PRIORITY_RATE = 100_000; // 10 LAMPORTS per CU for better priority
 
