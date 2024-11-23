@@ -1,5 +1,5 @@
 export const metadata = {
-  title: 'SocialSniper.fun',
+  title: 'socialsnipe.fun',
   description: 'Automated Solana token trading platform',
 };
 

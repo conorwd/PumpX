@@ -99,15 +99,15 @@ export async function GET(request: Request) {
   const headers = {
     'Accept': 'application/json',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-    'Origin': 'https://socialsniper.fun',
-    'Referer': 'https://socialsniper.fun/',
+    'Origin': 'https://pump.fun',
+    'Referer': 'https://pump.fun/',
   };
 
   // Try both versions of the mint address (with and without 'pump' suffix)
   try {
     // First try with the original mint address
     try {
-      const data = await fetchWithRetry(`https://frontend-api.socialsniper.fun/coins/${mintAddress}`, {
+      const data = await fetchWithRetry(`https://frontend-api.pump.fun/coins/${mintAddress}`, {
         headers,
         cache: 'no-store'
       });
@@ -127,7 +127,7 @@ export async function GET(request: Request) {
       // try the alternate version
       if (mintAddress !== baseMintAddress) {
         console.log('Trying base mint address:', baseMintAddress);
-        const data = await fetchWithRetry(`https://frontend-api.socialsniper.fun/coins/${baseMintAddress}`, {
+        const data = await fetchWithRetry(`https://frontend-api.pump.fun/coins/${baseMintAddress}`, {
           headers,
           cache: 'no-store'
         });
@@ -138,7 +138,7 @@ export async function GET(request: Request) {
       if (mintAddress === baseMintAddress) {
         const pumpAddress = `${baseMintAddress}pump`;
         console.log('Trying with pump suffix:', pumpAddress);
-        const data = await fetchWithRetry(`https://frontend-api.socialsniper.fun/coins/${pumpAddress}`, {
+        const data = await fetchWithRetry(`https://frontend-api.pump.fun/coins/${pumpAddress}`, {
           headers,
           cache: 'no-store'
         });
