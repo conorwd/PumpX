@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { TradingProvider } from '../contexts/TradingContext';
 import { BlacklistProvider } from '../contexts/BlacklistContext';
 import { BuylistProvider } from '../contexts/BuylistContext';
@@ -12,12 +12,18 @@ export default function Providers({
 }: {
   children: ReactNode;
 }) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <WalletProvider>
       <TradingProvider>
         <BlacklistProvider>
           <BuylistProvider>
-            {children}
+            {mounted ? children : null}
             <Toaster position="bottom-right" />
           </BuylistProvider>
         </BlacklistProvider>

@@ -49,6 +49,8 @@ export default function TwitterFeed() {
   const { blacklistedUsers, addToBlacklist, isBlacklisted } = useBlacklistContext();
   const { isBuylisted } = useBuylistContext();
   const [tweets, setTweets] = useState<LocalTweet[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isMounted, setIsMounted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
@@ -80,6 +82,14 @@ export default function TwitterFeed() {
     }
     return new Set();
   });
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  if (!isMounted) {
+    return null; // or return a loading spinner
+  }
 
   const sourceTypes = [
     { 
