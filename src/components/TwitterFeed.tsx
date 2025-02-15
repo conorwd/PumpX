@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { Tweet, TweetType, TokenInfo } from '../types';
 import { TwitterService } from '../services/twitterService';
 import { Connection, Keypair } from '@solana/web3.js';
 import { PumpFunClient } from '../pumpFunClient';
@@ -8,17 +9,16 @@ import { DexscreenerClient } from '../dexscreenerClient';
 import { useTradingContext } from '../contexts/TradingContext';
 import { useBlacklistContext } from '../contexts/BlacklistContext';
 import { useBuylistContext } from '../contexts/BuylistContext';
-import { Tweet as ImportedTweet, TokenInfo } from '../types';
-import bs58 from 'bs58';
-import axios from 'axios';
-import { formatDistanceToNow } from 'date-fns';
 import { OrderStatus } from '../contexts/TradingContext';
 import { RPC_ENDPOINT } from '../constants';
 import { HeliusService } from '../services/heliusService';
+import { formatDistanceToNow } from 'date-fns';
+import bs58 from 'bs58';
+import axios from 'axios';
 
-interface LocalTweet extends Omit<ImportedTweet, 'text'> {
+interface LocalTweet extends Omit<Tweet, 'text'> {
   full_text: string;
-  source_type: 'pumpfun' | 'dexscreener';
+  source_type: TweetType;
   tokenInfo?: TokenInfo;
   mintAddress?: string;
   pricePerToken?: number;
@@ -85,6 +85,8 @@ export default function TwitterFeed() {
     }
     return new Set();
   });
+
+  const heliusService = useRef(new HeliusService(RPC_ENDPOINT));
 
   useEffect(() => {
     setIsMounted(true);
@@ -681,7 +683,7 @@ export default function TwitterFeed() {
 
   const initClients = async () => {
     try {
-      if (!privateKey) {
+      if (!privateKey || !RPC_ENDPOINT) {
         setPumpFunClient(null);
         setDexscreenerClient(null);
         return;
@@ -695,7 +697,7 @@ export default function TwitterFeed() {
       const pumpClient = new PumpFunClient(
         connection, 
         keypair,
-        undefined, // rpcEndpoint is optional
+        undefined,
         {
           autoBuyEnabled,
           followerCheckEnabled,
@@ -707,7 +709,7 @@ export default function TwitterFeed() {
       const dexClient = new DexscreenerClient(
         connection, 
         keypair, 
-        undefined, // rpcEndpoint is optional
+        undefined,
         {
           autoBuyEnabled,
           followerCheckEnabled,
@@ -745,7 +747,7 @@ export default function TwitterFeed() {
     }
   }, [autoBuyEnabled]);
 
-  const handleNewTweets = async (newTweets: ImportedTweet[], type: 'pumpfun' | 'dexscreener', isInitialLoad: boolean = false) => {
+  const handleNewTweets = async (newTweets: Tweet[], type: TweetType, isInitialLoad: boolean = false) => {
     if (isPaused) {
       console.log('Tweet processing paused');
       return;
@@ -754,63 +756,62 @@ export default function TwitterFeed() {
     try {
       setLoading(true);
       
-      // Process new tweets to get token info
-      const processedTweets = await Promise.all(newTweets.map(async tweet => {
-        // Skip if we've already processed this tweet
-        const tweetKey = `${type}_${tweet.id}`;
-        if (!isInitialLoad && localStorage.getItem(`processed_${tweetKey}`)) {
-          console.log('Skipping already processed tweet:', tweetKey);
-          return null;
-        }
+      setTweets(prevTweets => {
+        // Create a map of existing tweets
+        const existingTweets = new Map(
+          prevTweets.map(tweet => [`${tweet.source_type}_${tweet.id}`, tweet])
+        );
 
-        const localTweet = {
-          ...tweet,
-          full_text: tweet.text,
-          source_type: type
-        } as LocalTweet;
+        // Process and add new tweets
+        const processedTweets = newTweets.map(async tweet => {
+          const id = tweet.id || Math.random().toString(36).substr(2, 9);
+          const created_at = tweet.created_at || Date.now().toString();
+          const mintAddress = extractMintAddress({
+            ...tweet,
+            source_type: type,
+            full_text: tweet.text || '',
+            id,
+            created_at
+          } as LocalTweet);
 
-        // Extract mint address
-        const mintAddress = extractMintAddress(localTweet);
-        if (mintAddress) {
-          localTweet.mintAddress = mintAddress;
-          // Fetch token info
-          const tokenInfo = await fetchTokenInfo(mintAddress, type);
-          if (tokenInfo) {
-            localTweet.tokenInfo = tokenInfo;
-            // Get initial price
-            if (type === 'pumpfun' && pumpFunClient) {
-              const pumpPrice = await pumpFunClient.getTokenPrice(mintAddress);
-              localTweet.pricePerToken = pumpPrice ?? undefined;
-            } else if (type === 'dexscreener' && dexscreenerClient) {
-              localTweet.pricePerToken = await dexscreenerClient.getTokenPrice(mintAddress);
-            }
-            localTweet.lastPriceCheck = Date.now();
+          // Fetch token info if we have a mint address
+          let tokenInfo = undefined;
+          if (mintAddress) {
+            tokenInfo = await fetchTokenInfo(mintAddress, type);
           }
-        }
-
-        // Mark tweet as processed
-        if (!isInitialLoad) {
-          localStorage.setItem(`processed_${tweetKey}`, 'true');
-        }
-        
-        return localTweet;
-      }));
-      
-      // Filter out null tweets (already processed ones)
-      const validTweets = processedTweets.filter(tweet => tweet !== null) as LocalTweet[];
-      
-      if (validTweets.length > 0) {
-        setTweets(prevTweets => {
-          // Combine new and existing tweets
-          const updatedTweets = [...validTweets, ...prevTweets];
-          // Sort by creation time, newest first
-          const sortedTweets = updatedTweets.sort((a, b) => 
-            parseInt(b.created_at) - parseInt(a.created_at)
-          );
-          // Keep only the 100 most recent tweets
-          return sortedTweets.slice(0, 100);
+          
+          return {
+            ...tweet,
+            source_type: type,
+            full_text: tweet.text || '',
+            id,
+            created_at,
+            mintAddress,
+            tokenInfo
+          } as LocalTweet;
         });
-      }
+
+        // Wait for all token info fetches to complete
+        Promise.all(processedTweets).then(resolvedTweets => {
+          // Add new tweets to the map, replacing any duplicates
+          resolvedTweets.forEach(tweet => {
+            const key = `${tweet.source_type}_${tweet.id}`;
+            existingTweets.set(key, tweet);
+          });
+
+          // Convert back to array, sort, and limit to 100 tweets
+          const sortedTweets = Array.from(existingTweets.values())
+            .sort((a, b) => parseInt(b.created_at) - parseInt(a.created_at))
+            .slice(0, 100);
+
+          setTweets(sortedTweets);
+        });
+
+        // Return current state while we wait for token info
+        return Array.from(existingTweets.values())
+          .sort((a, b) => parseInt(b.created_at) - parseInt(a.created_at))
+          .slice(0, 100);
+      });
 
     } catch (err) {
       console.error('Error processing tweets:', err);
@@ -828,18 +829,36 @@ export default function TwitterFeed() {
       handleNewTweets(newTweets, type, false);  // false = not initial load
     });
 
-    // Load initial cached tweets
+    // Load initial tweets
     const loadInitialTweets = async () => {
       setLoading(true);
       try {
-        const pumpfunTweets = twitterService.getCachedTweets('pumpfun');
-        const dexscreenerTweets = twitterService.getCachedTweets('dexscreener');
-        
-        if (pumpfunTweets.length > 0) {
-          await handleNewTweets(pumpfunTweets, 'pumpfun', true);  // true = initial load
-        }
-        if (dexscreenerTweets.length > 0) {
-          await handleNewTweets(dexscreenerTweets, 'dexscreener', true);  // true = initial load
+        // Get all cached tweets at once
+        const allTweets = twitterService.getAllCachedTweets();
+        if (allTweets.length > 0) {
+          setTweets(prevTweets => {
+            // Create a map of existing tweets
+            const existingTweets = new Map(
+              prevTweets.map(tweet => [`${tweet.source_type}_${tweet.id}`, tweet])
+            );
+
+            // Add new tweets, replacing any duplicates
+            allTweets.forEach(tweet => {
+              const key = `${tweet.source_type}_${tweet.id}`;
+              // Transform Tweet to LocalTweet before adding to map
+              const localTweet: LocalTweet = {
+                ...tweet,
+                full_text: tweet.text || '',
+                source_type: tweet.source_type || 'pumpfun'
+              };
+              existingTweets.set(key, localTweet);
+            });
+
+            // Convert back to array and sort
+            return Array.from(existingTweets.values())
+              .sort((a, b) => parseInt(b.created_at) - parseInt(a.created_at))
+              .slice(0, 100); // Keep only the 100 most recent tweets
+          });
         }
 
         // Force a reconnection to ensure we get fresh data
@@ -1023,13 +1042,12 @@ export default function TwitterFeed() {
           <div className="space-y-4 p-4">
             {filteredTweets
               .filter(tweet => !isBlacklisted(tweet.user.screen_name))
-              .sort((a, b) => parseInt(b.created_at) - parseInt(a.created_at))
               .map((tweet) => {
-                // Create a unique key that combines source type and ID
+                const uniqueKey = `${tweet.source_type}_${tweet.id}_${tweet.created_at}`;
                 const tweetKey = `${tweet.source_type}_${tweet.id}`;
                 return (
                   <div
-                    key={tweetKey}
+                    key={uniqueKey}
                     className={`bg-gray-900 rounded-lg shadow-lg border border-gray-700 p-3 hover:border-gray-600 transition-colors ${
                       tweet.source_type === 'pumpfun' 
                         ? 'border-l-4 border-l-blue-500'
@@ -1080,8 +1098,8 @@ export default function TwitterFeed() {
                           >
                             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                               <path d="M23.643 4.937c-.835.37-1.732.62-2.675.733.962-.576 1.7-1.49 2.048-2.578-.9.534-1.897.922-2.958 1.13-.85-.904-2.06-1.47-3.4-1.47-2.572 0-4.658 2.086-4.658 4.66 0 .364.042.718.12 1.06-3.873-.195-7.304-2.05-9.602-4.868-.4.69-.63 1.49-.63 2.342 0 1.616.823 3.043 2.072 3.878-.764-.025-1.482-.234-2.11-.583v.06c0 2.257 1.605 4.14 3.737 4.568-.392.106-.803.162-1.227.162-.3 0-.593-.028-.877-.082 2.062 1.323 4.51 2.093 7.14 2.093 8.57 0 13.255-7.098 13.255-13.254 0-.2-.005-.402-.014-.602.91-.658 1.7-1.477 2.323-2.41z" />
-                          </svg>
-                        </a>
+                            </svg>
+                          </a>
                           <a
                             href={tweet.source_type === 'pumpfun' ? getPumpFunUrl(tweet) : getDexscreenerUrl(tweet)}
                             target="_blank"

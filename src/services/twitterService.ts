@@ -69,15 +69,22 @@ export class TwitterService {
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
   private readonly maxReconnectAttempts = 5;
-  private readonly wsUrl = process.env.NEXT_PUBLIC_TWITTER_WS_URL || 'wss://web-production-a7b6.up.railway.app';
+  private readonly wsUrl: string;
   private subscribers: ((tweets: Tweet[], type: TweetType) => void)[] = [];
-  private cachedTweets: { [key in TweetType]: Map<string, Tweet> } = {
-    pumpfun: new Map(),
-    dexscreener: new Map()
+  private cachedTweets: { [key in TweetType]: Tweet[] } = {
+    pumpfun: [],
+    dexscreener: []
   };
+  private processedTweetIds: Set<string> = new Set();
   private searchConfigs: SearchConfig[];
 
   private constructor() {
+    // Ensure the WebSocket URL is properly formatted
+    const wsUrl = process.env.NEXT_PUBLIC_TWITTER_WS_URL || '';
+    this.wsUrl = wsUrl.startsWith('ws://') || wsUrl.startsWith('wss://') 
+      ? wsUrl 
+      : `wss://${wsUrl}`;
+
     this.searchConfigs = [
       { 
         type: 'pumpfun',
@@ -102,6 +109,7 @@ export class TwitterService {
   }
 
   private transformTweet(rawTweet: RawTweet): Tweet {
+    // Handle null text content
     if (!rawTweet.text && !rawTweet.full_text) {
       console.log('Tweet has no text content, skipping transformation:', rawTweet.id_str);
       return {
@@ -129,6 +137,7 @@ export class TwitterService {
       };
     }
 
+    // Combine URLs from both entities.urls and entities.media
     const urls = [
       ...(rawTweet.entities?.urls || []),
       ...(rawTweet.entities?.media || [])
@@ -141,6 +150,7 @@ export class TwitterService {
     console.log('Transforming tweet:', rawTweet.id_str);
     
     console.log('Raw tweet timestamp:', rawTweet.tweet_created_at);
+    // Parse the timestamp and convert to current timezone
     const createdAtMs = new Date(rawTweet.tweet_created_at?.replace('.000000Z', 'Z') || Date.now()).getTime();
     console.log('Converted timestamp:', createdAtMs);
     
@@ -185,14 +195,19 @@ export class TwitterService {
   private connect() {
     if (this.ws?.readyState === WebSocket.OPEN) return;
 
-    // Ensure URL starts with ws:// or wss://
-    const url = this.wsUrl.startsWith('ws://') || this.wsUrl.startsWith('wss://') 
-      ? this.wsUrl 
-      : `wss://${this.wsUrl}`;
-
-    console.log('Connecting to tweet stream at:', url);
-    this.ws = new WebSocket(url);
+    console.log('Connecting to tweet stream...');
+    this.ws = new WebSocket(this.wsUrl);
     this.setupEventHandlers();
+  }
+
+  private isTweetProcessed(tweetId: string, type: TweetType): boolean {
+    const key = `${type}_${tweetId}`;
+    return this.processedTweetIds.has(key);
+  }
+
+  private markTweetAsProcessed(tweetId: string, type: TweetType): void {
+    const key = `${type}_${tweetId}`;
+    this.processedTweetIds.add(key);
   }
 
   private setupEventHandlers() {
@@ -211,25 +226,44 @@ export class TwitterService {
         
         if (message.type === 'tweets' && Array.isArray(message.data)) {
           console.log(`Processing ${message.data.length} tweets of type ${message.queryType}`);
-          const tweets = message.data.map(tweet => {
+          
+          // Filter out already processed tweets
+          const newTweets = message.data.filter(tweet => !this.isTweetProcessed(tweet.id_str, message.queryType));
+          
+          if (newTweets.length === 0) {
+            console.log('All tweets in this batch were already processed');
+            return;
+          }
+
+          const transformedTweets = newTweets.map(tweet => {
             const transformedTweet = this.transformTweet(tweet);
             transformedTweet.source_type = message.queryType;
+            // Mark the tweet as processed
+            this.markTweetAsProcessed(tweet.id_str, message.queryType);
             return transformedTweet;
           });
 
-          // Use Map to prevent duplicates
-          tweets.forEach(tweet => {
-            this.cachedTweets[message.queryType].set(tweet.id, tweet);
+          // Create a map of existing tweets for faster lookup
+          const existingTweetsMap = new Map(
+            this.cachedTweets[message.queryType].map(tweet => [tweet.id, tweet])
+          );
+
+          // Add new tweets to the map, replacing any existing ones
+          transformedTweets.forEach(tweet => {
+            existingTweetsMap.set(tweet.id, tweet);
           });
 
-          // Convert Map values back to array for subscribers
-          const uniqueTweets = Array.from(this.cachedTweets[message.queryType].values());
-          
-          // Notify subscribers
-          console.log('Notifying subscribers with processed tweets:', uniqueTweets);
-          this.subscribers.forEach(callback => {
-            callback(uniqueTweets, message.queryType);
-          });
+          // Convert map back to array and sort by creation time
+          this.cachedTweets[message.queryType] = Array.from(existingTweetsMap.values())
+            .sort((a, b) => parseInt(b.created_at) - parseInt(a.created_at));
+
+          // Notify subscribers only if we have new tweets
+          if (transformedTweets.length > 0) {
+            console.log('Notifying subscribers with processed tweets:', transformedTweets);
+            this.subscribers.forEach(callback => {
+              callback(transformedTweets, message.queryType);
+            });
+          }
         }
       } catch (error) {
         console.error('Error processing WebSocket message:', error);
@@ -282,8 +316,34 @@ export class TwitterService {
   }
 
   public getCachedTweets(type: TweetType): Tweet[] {
-    return Array.from(this.cachedTweets[type].values())
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    // Return a fresh sorted copy of the cached tweets
+    return [...this.cachedTweets[type]]
+      .sort((a, b) => parseInt(b.created_at) - parseInt(a.created_at));
+  }
+
+  public getAllCachedTweets(): Tweet[] {
+    // Combine and sort all tweets from both sources
+    const allTweets = [
+      ...this.cachedTweets.pumpfun,
+      ...this.cachedTweets.dexscreener
+    ];
+
+    // Create a map to deduplicate by ID
+    const uniqueTweets = new Map<string, Tweet>();
+    allTweets.forEach(tweet => {
+      const key = `${tweet.source_type}_${tweet.id}`;
+      if (!uniqueTweets.has(key)) {
+        uniqueTweets.set(key, tweet);
+      }
+    });
+
+    // Convert back to array and sort by creation time
+    return Array.from(uniqueTweets.values())
+      .sort((a, b) => parseInt(b.created_at) - parseInt(a.created_at));
+  }
+
+  public clearProcessedTweets(): void {
+    this.processedTweetIds.clear();
   }
 
   public disconnect() {
@@ -293,9 +353,10 @@ export class TwitterService {
     }
     this.subscribers = [];
     this.cachedTweets = {
-      pumpfun: new Map(),
-      dexscreener: new Map()
+      pumpfun: [],
+      dexscreener: []
     };
+    this.processedTweetIds.clear();
   }
 
   public reconnect() {

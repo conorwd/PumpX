@@ -5,6 +5,7 @@ import { useTradingContext } from '../contexts/TradingContext';
 import bs58 from 'bs58';
 import { Connection, PublicKey, LAMPORTS_PER_SOL, Keypair } from '@solana/web3.js';
 import { PumpFunClient } from '../pumpFunClient';
+import { RPC_ENDPOINT } from '../constants';
 
 // Extend Window interface for triggerTokenUpdate
 declare global {
@@ -49,7 +50,7 @@ export default function PurchasedTokens() {
 
   const fetchSolBalance = useCallback(async (publicKey: string) => {
     try {
-      const connection = new Connection(process.env.NEXT_PUBLIC_HELIUS_RPC_URL);
+      const connection = new Connection(RPC_ENDPOINT);
       const balance = await connection.getBalance(new PublicKey(publicKey));
       if (mountedRef.current) {
         setSolBalance(balance / LAMPORTS_PER_SOL);
@@ -83,7 +84,7 @@ export default function PurchasedTokens() {
       // Fetch SOL balance
       await fetchSolBalance(publicKey);
 
-      const response = await fetch(process.env.NEXT_PUBLIC_HELIUS_RPC_URL, {
+      const response = await fetch(RPC_ENDPOINT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -140,7 +141,7 @@ export default function PurchasedTokens() {
     if (!holdings.length) return;
 
     try {
-      const response = await fetch(process.env.NEXT_PUBLIC_HELIUS_RPC_URL, {
+      const response = await fetch(RPC_ENDPOINT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -316,9 +317,9 @@ export default function PurchasedTokens() {
 
   const initPumpFunClient = useCallback(async () => {
     try {
-      if (!privateKey || !process.env.NEXT_PUBLIC_HELIUS_RPC_URL) return;
+      if (!privateKey) return;
       
-      const connection = new Connection(process.env.NEXT_PUBLIC_HELIUS_RPC_URL);
+      const connection = new Connection(RPC_ENDPOINT);
       const decodedKey = bs58.decode(privateKey);
       const keypair = Keypair.fromSecretKey(decodedKey);
       const client = new PumpFunClient(connection, keypair);

@@ -86,7 +86,7 @@ class DexscreenerClient {
   private connection: Connection;
   private wallet: Keypair;
   private provider: AnchorProvider;
-  private rpcEndpoint: string;
+  private rpcEndpoint?: string;
   private tradingSettings: any;
 
   constructor(
@@ -97,8 +97,7 @@ class DexscreenerClient {
   ) {
     this.connection = connection;
     this.wallet = wallet;
-    this.rpcEndpoint =
-      rpcEndpoint || process.env.NEXT_PUBLIC_HELIUS_RPC_URL;
+    this.rpcEndpoint = rpcEndpoint || process.env.NEXT_PUBLIC_HELIUS_RPC_URL || undefined;
     this.tradingSettings = tradingSettings;
 
     // Create a wallet adapter that implements the Wallet interface

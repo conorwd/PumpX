@@ -75,7 +75,7 @@ enum PumpFunError {
 class PumpFunClient {
   private connection: Connection;
   private wallet: Keypair;
-  private rpcEndpoint: string;
+  private rpcEndpoint?: string;
   private lastRequestId: number = 0;
   private tradingSettings: any;
   private lastBuyTimestamp: number = 0;
@@ -87,7 +87,7 @@ class PumpFunClient {
   constructor(connection: Connection, wallet: Keypair, rpcEndpoint?: string, tradingSettings?: any) {
     this.connection = connection;
     this.wallet = wallet;
-    this.rpcEndpoint = rpcEndpoint || process.env.NEXT_PUBLIC_HELIUS_RPC_URL;
+    this.rpcEndpoint = rpcEndpoint || process.env.NEXT_PUBLIC_HELIUS_RPC_URL || undefined;
     this.tradingSettings = tradingSettings;
   }
 
