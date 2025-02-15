@@ -3,6 +3,19 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+// Cache structure to store responses
+const responseCache = new Map<string, {
+  data: any;
+  timestamp: number;
+  attempts: number;
+  lastAttempt: number;
+}>();
+
+const CACHE_DURATION = 30000; // 30 seconds
+const MAX_ATTEMPTS = 3;
+const ATTEMPT_WINDOW = 60000; // 1 minute
+const MIN_RETRY_INTERVAL = 2000; // 2 seconds
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   let mintAddress = searchParams.get('mintAddress');
@@ -19,7 +32,51 @@ export async function GET(request: Request) {
     ? mintAddress.slice(0, -4) 
     : mintAddress;
 
-  console.log('Fetching data for mintAddress:', mintAddress);
+  // Check cache first
+  const now = Date.now();
+  const cacheKey = mintAddress;
+  const cachedResponse = responseCache.get(cacheKey);
+
+  if (cachedResponse) {
+    // If we have a valid cached response, return it
+    if (now - cachedResponse.timestamp < CACHE_DURATION) {
+      console.log('Returning cached response for:', mintAddress);
+      return NextResponse.json(cachedResponse.data);
+    }
+
+    // Check rate limiting
+    if (
+      cachedResponse.attempts >= MAX_ATTEMPTS &&
+      now - cachedResponse.lastAttempt < ATTEMPT_WINDOW
+    ) {
+      console.log('Rate limit exceeded for:', mintAddress);
+      return NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          details: `Maximum ${MAX_ATTEMPTS} attempts allowed per minute`,
+          mintAddress,
+          nextAttemptAllowed: new Date(cachedResponse.lastAttempt + ATTEMPT_WINDOW).toISOString()
+        },
+        { status: 429 }
+      );
+    }
+
+    // Ensure minimum time between retries
+    if (now - cachedResponse.lastAttempt < MIN_RETRY_INTERVAL) {
+      console.log('Retry too soon for:', mintAddress);
+      return NextResponse.json(
+        {
+          error: 'Too many requests',
+          details: 'Please wait before retrying',
+          mintAddress,
+          retryAfter: MIN_RETRY_INTERVAL - (now - cachedResponse.lastAttempt)
+        },
+        { status: 429 }
+      );
+    }
+  }
+
+  console.log('Fetching fresh data for mintAddress:', mintAddress);
 
   // Function to handle API call with retries and response validation
   async function fetchWithRetry(url: string, options: any, retries = 3, delay = 1000) {
@@ -60,13 +117,12 @@ export async function GET(request: Request) {
         const errorText = await response.text();
         lastError = new Error(`API responded with status: ${response.status} - ${errorText}`);
         
-        // Log detailed error information
         console.error(`API attempt ${i + 1} failed:`, {
           url,
           status: response.status,
           statusText: response.statusText,
           contentType,
-          body: errorText.substring(0, 200), // Limit error text length
+          body: errorText.substring(0, 200),
           timestamp: new Date().toISOString()
         });
 
@@ -103,6 +159,22 @@ export async function GET(request: Request) {
     'Referer': 'https://pump.fun/',
   };
 
+  // Update cache attempt count and timestamp
+  if (cachedResponse) {
+    responseCache.set(cacheKey, {
+      ...cachedResponse,
+      attempts: cachedResponse.attempts + 1,
+      lastAttempt: now
+    });
+  } else {
+    responseCache.set(cacheKey, {
+      data: null,
+      timestamp: now,
+      attempts: 1,
+      lastAttempt: now
+    });
+  }
+
   // Try both versions of the mint address (with and without 'pump' suffix)
   try {
     // First try with the original mint address
@@ -111,6 +183,15 @@ export async function GET(request: Request) {
         headers,
         cache: 'no-store'
       });
+
+      // Update cache with successful response
+      responseCache.set(cacheKey, {
+        data,
+        timestamp: now,
+        attempts: 1,
+        lastAttempt: now
+      });
+
       return NextResponse.json(data);
     } catch (error) {
       // Type guard for Error instance
@@ -131,6 +212,15 @@ export async function GET(request: Request) {
           headers,
           cache: 'no-store'
         });
+
+        // Update cache with successful response
+        responseCache.set(cacheKey, {
+          data,
+          timestamp: now,
+          attempts: 1,
+          lastAttempt: now
+        });
+
         return NextResponse.json(data);
       }
       
@@ -142,6 +232,15 @@ export async function GET(request: Request) {
           headers,
           cache: 'no-store'
         });
+
+        // Update cache with successful response
+        responseCache.set(cacheKey, {
+          data,
+          timestamp: now,
+          attempts: 1,
+          lastAttempt: now
+        });
+
         return NextResponse.json(data);
       }
       
@@ -201,6 +300,16 @@ export async function GET(request: Request) {
     );
   }
 }
+
+// Clean up old cache entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of responseCache.entries()) {
+    if (now - value.timestamp > CACHE_DURATION) {
+      responseCache.delete(key);
+    }
+  }
+}, CACHE_DURATION);
 
 export async function OPTIONS() {
   return new NextResponse(null, {

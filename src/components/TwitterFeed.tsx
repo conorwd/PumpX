@@ -518,8 +518,14 @@ export default function TwitterFeed() {
   const fetchTokenInfo = async (idOrAddress: string, source_type: 'pumpfun' | 'dexscreener'): Promise<TokenInfo | undefined> => {
     // Check cache first
     if (tokenInfoCache[idOrAddress]) {
-      console.log('Using cached token info for:', idOrAddress);
-      return tokenInfoCache[idOrAddress];
+      const cachedInfo = tokenInfoCache[idOrAddress];
+      const now = Date.now();
+      // Only use cache if it's less than 5 minutes old
+      if (cachedInfo.lastFetched && now - cachedInfo.lastFetched < 300000) {
+        console.log('Using cached token info for:', idOrAddress);
+        return cachedInfo;
+      }
+      console.log('Cache expired for:', idOrAddress);
     }
 
     try {
@@ -528,42 +534,56 @@ export default function TwitterFeed() {
       let tokenInfo: TokenInfo | undefined;
 
       if (source_type === 'pumpfun') {
-        console.log('Using proxy for pump.fun token');
+        console.log('Making request to pump-proxy for token:', idOrAddress);
         try {
           const url = `/api/pump-proxy?mintAddress=${encodeURIComponent(idOrAddress)}`;
-          const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json'
-            }
-          });
+          console.log('Pump proxy URL:', url);
+          
+          const response = await fetch(url);
+          console.log('Pump proxy response status:', response.status);
 
-          if (response.ok) {
-            const data = await response.json();
-            
-            const createdTimestamp = data.created_timestamp 
-              ? Math.floor(data.created_timestamp / 1000)
-              : Math.floor(Date.now() / 1000);
-            
-            const marketCap = data.usd_market_cap || 0;
-            const price = data.total_supply > 0 
-              ? marketCap / (data.total_supply / 1e9) 
-              : 0;
-            
-            tokenInfo = {
-              symbol: data.symbol || '???',
-              name: data.name || 'Unknown Token',
-              imageUrl: data.image_uri || '',
-              price: price,
-              marketCap: marketCap,
-              createdTimestamp: createdTimestamp
-            };
+          if (!response.ok) {
+            console.error('Pump proxy error:', response.status, response.statusText);
+            return undefined;
           }
+
+          const data = await response.json();
+          console.log('Pump proxy response data:', data);
+          
+          if (data.error) {
+            console.error('Pump proxy error:', data.error);
+            return undefined;
+          }
+          
+          const createdTimestamp = data.created_timestamp 
+            ? Math.floor(data.created_timestamp / 1000)
+            : Math.floor(Date.now() / 1000);
+          
+          const marketCap = data.usd_market_cap || data.market_cap || 0;
+          const totalSupply = data.total_supply || 0;
+          
+          // Calculate price based on market cap and total supply
+          const price = totalSupply > 0 
+            ? marketCap / (totalSupply / 1e9) 
+            : 0;
+          
+          tokenInfo = {
+            symbol: data.symbol || '???',
+            name: data.name || 'Unknown Token',
+            imageUrl: data.image_uri || '',
+            price: price,
+            marketCap: marketCap,
+            createdTimestamp: createdTimestamp,
+            mintAddress: idOrAddress,
+            lastFetched: Date.now()
+          };
+
+          console.log('Processed pump.fun token info:', tokenInfo);
         } catch (error) {
           console.error('Error with pump-proxy:', error);
+          return undefined;
         }
-      } 
+      }
       else if (source_type === 'dexscreener') {
         console.log('Using DexScreener API for token:', idOrAddress);
         try {
@@ -579,7 +599,8 @@ export default function TwitterFeed() {
               imageUrl: '',
               price: parseFloat(pair.priceUsd) || 0,
               marketCap: pair.marketCap || 0,
-              createdTimestamp: pair.pairCreatedAt ? Math.floor(pair.pairCreatedAt / 1000) : Math.floor(Date.now() / 1000)
+              createdTimestamp: pair.pairCreatedAt ? Math.floor(pair.pairCreatedAt / 1000) : Math.floor(Date.now() / 1000),
+              mintAddress: pair.baseToken.address
             };
           } else {
             // If no pair found, try as a token address
@@ -596,13 +617,15 @@ export default function TwitterFeed() {
                   imageUrl: '',
                   price: parseFloat(solanaPair.priceUsd) || 0,
                   marketCap: solanaPair.marketCap || 0,
-                  createdTimestamp: solanaPair.pairCreatedAt ? Math.floor(solanaPair.pairCreatedAt / 1000) : Math.floor(Date.now() / 1000)
+                  createdTimestamp: solanaPair.pairCreatedAt ? Math.floor(solanaPair.pairCreatedAt / 1000) : Math.floor(Date.now() / 1000),
+                  mintAddress: solanaPair.baseToken.address
                 };
               }
             }
           }
         } catch (error) {
           console.error('Error fetching DexScreener token info:', error);
+          return undefined;
         }
       }
 
@@ -766,6 +789,21 @@ export default function TwitterFeed() {
         const processedTweets = newTweets.map(async tweet => {
           const id = tweet.id || Math.random().toString(36).substr(2, 9);
           const created_at = tweet.created_at || Date.now().toString();
+          
+          // First check if the tweet already has token info from TwitterService
+          if (tweet.tokenInfo && tweet.mintAddress) {
+            return {
+              ...tweet,
+              source_type: type,
+              full_text: tweet.text || '',
+              id,
+              created_at,
+              tokenInfo: tweet.tokenInfo,
+              mintAddress: tweet.mintAddress
+            } as LocalTweet;
+          }
+
+          // If not, extract mint address and fetch token info
           const mintAddress = extractMintAddress({
             ...tweet,
             source_type: type,
@@ -774,9 +812,10 @@ export default function TwitterFeed() {
             created_at
           } as LocalTweet);
 
-          // Fetch token info if we have a mint address
+          // Fetch token info if we have a mint address and don't have token info yet
           let tokenInfo = undefined;
-          if (mintAddress) {
+          if (mintAddress && !tweet.tokenInfo) {
+            console.log(`Fetching token info for ${mintAddress} (${type})`);
             tokenInfo = await fetchTokenInfo(mintAddress, type);
           }
           
@@ -787,7 +826,7 @@ export default function TwitterFeed() {
             id,
             created_at,
             mintAddress,
-            tokenInfo
+            tokenInfo: tokenInfo || tweet.tokenInfo
           } as LocalTweet;
         });
 
