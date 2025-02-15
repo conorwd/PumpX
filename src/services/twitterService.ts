@@ -69,11 +69,11 @@ export class TwitterService {
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
   private readonly maxReconnectAttempts = 5;
-  private readonly wsUrl = 'wss://web-production-9ecc.up.railway.app';
+  private readonly wsUrl = process.env.NEXT_PUBLIC_TWITTER_WS_URL || 'wss://web-production-a7b6.up.railway.app';
   private subscribers: ((tweets: Tweet[], type: TweetType) => void)[] = [];
-  private cachedTweets: { [key in TweetType]: Tweet[] } = {
-    pumpfun: [],
-    dexscreener: []
+  private cachedTweets: { [key in TweetType]: Map<string, Tweet> } = {
+    pumpfun: new Map(),
+    dexscreener: new Map()
   };
   private searchConfigs: SearchConfig[];
 
@@ -188,8 +188,13 @@ export class TwitterService {
   private connect() {
     if (this.ws?.readyState === WebSocket.OPEN) return;
 
-    console.log('Connecting to tweet stream...');
-    this.ws = new WebSocket(this.wsUrl);
+    // Ensure URL starts with ws:// or wss://
+    const url = this.wsUrl.startsWith('ws://') || this.wsUrl.startsWith('wss://') 
+      ? this.wsUrl 
+      : `wss://${this.wsUrl}`;
+
+    console.log('Connecting to tweet stream at:', url);
+    this.ws = new WebSocket(url);
     this.setupEventHandlers();
   }
 
@@ -215,13 +220,18 @@ export class TwitterService {
             return transformedTweet;
           });
 
-          // Cache tweets
-          this.cachedTweets[message.queryType] = [...this.cachedTweets[message.queryType], ...tweets];
+          // Use Map to prevent duplicates
+          tweets.forEach(tweet => {
+            this.cachedTweets[message.queryType].set(tweet.id, tweet);
+          });
 
+          // Convert Map values back to array for subscribers
+          const uniqueTweets = Array.from(this.cachedTweets[message.queryType].values());
+          
           // Notify subscribers
-          console.log('Notifying subscribers with processed tweets:', tweets);
+          console.log('Notifying subscribers with processed tweets:', uniqueTweets);
           this.subscribers.forEach(callback => {
-            callback(tweets, message.queryType);
+            callback(uniqueTweets, message.queryType);
           });
         }
       } catch (error) {
@@ -275,7 +285,8 @@ export class TwitterService {
   }
 
   public getCachedTweets(type: TweetType): Tweet[] {
-    return this.cachedTweets[type].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return Array.from(this.cachedTweets[type].values())
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }
 
   public disconnect() {
@@ -285,8 +296,8 @@ export class TwitterService {
     }
     this.subscribers = [];
     this.cachedTweets = {
-      pumpfun: [],
-      dexscreener: []
+      pumpfun: new Map(),
+      dexscreener: new Map()
     };
   }
 
