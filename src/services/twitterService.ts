@@ -102,7 +102,6 @@ export class TwitterService {
   }
 
   private transformTweet(rawTweet: RawTweet): Tweet {
-    // Handle null text content
     if (!rawTweet.text && !rawTweet.full_text) {
       console.log('Tweet has no text content, skipping transformation:', rawTweet.id_str);
       return {
@@ -130,7 +129,6 @@ export class TwitterService {
       };
     }
 
-    // Combine URLs from both entities.urls and entities.media
     const urls = [
       ...(rawTweet.entities?.urls || []),
       ...(rawTweet.entities?.media || [])
@@ -143,7 +141,6 @@ export class TwitterService {
     console.log('Transforming tweet:', rawTweet.id_str);
     
     console.log('Raw tweet timestamp:', rawTweet.tweet_created_at);
-    // Parse the timestamp and convert to current timezone
     const createdAtMs = new Date(rawTweet.tweet_created_at?.replace('.000000Z', 'Z') || Date.now()).getTime();
     console.log('Converted timestamp:', createdAtMs);
     
